@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "name": "deck_list",
-  "template": "{\"type\":\"ListView\",\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Your Deck Lists\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((count | string) ~ \" deck\" ~ (count != 1 and \"s\" or \"\") ~ \" saved\") | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- for deck in decks -%},{\"type\":\"ListViewItem\",\"key\":{{ (deck.id | string) | tojson }},\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"gray-800\",\"size\":1}},\"children\":[{\"type\":\"Row\",\"gap\":2,\"align\":\"center\",\"children\":[{%- if deck.is_favorite -%}{\"type\":\"Text\",\"value\":\"⭐\",\"size\":\"sm\"},{%- endif -%}{\"type\":\"Text\",\"value\":{{ (deck.name) | tojson }},\"size\":\"sm\",\"weight\":\"medium\",\"flex\":1},{\"type\":\"Text\",\"value\":{{ ((\"#\" ~ (deck.id | string))) | tojson }},\"size\":\"xs\",\"color\":\"tertiary\"}]}]}]}{%- endfor -%}]}",
+  "template": "{\"type\":\"ListView\",\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Your Deck Lists\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((count | string) ~ \" deck\" ~ (count != 1 and \"s\" or \"\") ~ \" saved\") | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}{%- if active_deck_id -%},{\"type\":\"Text\",\"value\":{{ (\"Active: \" ~ active_deck_name) | tojson }},\"size\":\"sm\",\"color\":\"accent\",\"weight\":\"medium\"}{%- endif -%}]}]}]}{%- for deck in decks -%},{\"type\":\"ListViewItem\",\"key\":{{ (deck.id | string) | tojson }},\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"gray-800\",\"size\":1}},\"children\":[{\"type\":\"Row\",\"gap\":2,\"align\":\"center\",\"children\":[{%- if deck.is_favorite -%}{\"type\":\"Text\",\"value\":\"⭐\",\"size\":\"sm\"},{%- endif -%}{%- if deck.is_active -%}{\"type\":\"Text\",\"value\":\"▶\",\"size\":\"sm\",\"color\":\"accent\"},{%- endif -%}{\"type\":\"Col\",\"gap\":1,\"flex\":1,\"children\":[{\"type\":\"Text\",\"value\":{{ (deck.name) | tojson }},\"size\":\"sm\",\"weight\":{{ (deck.is_active and \"bold\" or \"medium\") | tojson }}},{\"type\":\"Text\",\"value\":{{ ((\"ID: \" ~ (deck.id | string))) | tojson }},\"size\":\"xs\",\"color\":\"tertiary\"}]},{\"type\":\"Button\",\"label\":{{ ((deck.is_active and \"✓ Active\" or \"Select\")) | tojson }},\"size\":\"sm\",\"variant\":{{ ((deck.is_active and \"tertiary\" or \"secondary\")) | tojson }},\"disabled\":{{ (deck.is_active) | tojson }},\"onClickAction\":{\"type\":\"select_deck\",\"payload\":{\"deck_id\":{{ deck.id }},\"deck_name\":{{ (deck.name) | tojson }}}}}]}]}]}{%- endfor -%}]}",
   "jsonSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -9,6 +9,12 @@
       "count": {
         "type": "integer",
         "minimum": 0
+      },
+      "active_deck_id": {
+        "type": ["integer", "null"]
+      },
+      "active_deck_name": {
+        "type": ["string", "null"]
       },
       "decks": {
         "type": "array",
@@ -24,9 +30,12 @@
             },
             "is_favorite": {
               "type": "boolean"
+            },
+            "is_active": {
+              "type": "boolean"
             }
           },
-          "required": ["id", "name", "is_favorite"],
+          "required": ["id", "name", "is_favorite", "is_active"],
           "additionalProperties": false
         }
       }

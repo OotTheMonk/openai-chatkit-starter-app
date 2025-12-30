@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,6 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 # Load environment variables from .env file
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from .server import StarterChatServer
 
@@ -34,6 +38,20 @@ chatkit_server = StarterChatServer()
 async def chatkit_endpoint(request: Request) -> Response:
     """Proxy the ChatKit web component payload to the server implementation."""
     payload = await request.body()
+    
+    # Log the raw payload to see what's being received
+    logger.info(f"📥 ========== CHATKIT ENDPOINT ==========")
+    logger.info(f"📥 Raw payload length: {len(payload)} bytes")
+    try:
+        import json
+        payload_json = json.loads(payload)
+        logger.info(f"📥 Payload type: {payload_json.get('type', 'unknown')}")
+        logger.info(f"📥 Payload keys: {list(payload_json.keys())}")
+        if 'action' in payload_json:
+            logger.info(f"📥 ACTION DETECTED: {payload_json.get('action')}")
+    except Exception as e:
+        logger.warning(f"📥 Could not parse payload as JSON: {e}")
+    
     result = await chatkit_server.process(payload, {"request": request})
 
     if isinstance(result, StreamingResult):

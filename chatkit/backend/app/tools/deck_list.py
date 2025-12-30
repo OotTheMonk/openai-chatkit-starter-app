@@ -73,6 +73,13 @@ async def get_user_decks_tool(
             logger.info("No decks found")
             return "You don't have any deck lists saved yet."
         
+        # Get active deck info from deck manager
+        deck_manager = ctx.context.request_context.get("deck_manager")
+        active_deck_id, active_deck_name = None, None
+        if deck_manager:
+            thread_id = ctx.context.thread.id
+            active_deck_id, active_deck_name = deck_manager.get_active_deck(thread_id)
+        
         # Sort decks: favorites first, then by name
         sorted_decks = sorted(
             result["decks"],
@@ -80,8 +87,13 @@ async def get_user_decks_tool(
         )
         
         # Build and stream the widget with deck results
-        logger.info(f"📊 Building widget for {result['count']} decks")
-        widget = build_deck_list_widget(sorted_decks, result["count"])
+        logger.info(f"📊 Building widget for {result['count']} decks (active: {active_deck_id})")
+        widget = build_deck_list_widget(
+            sorted_decks, 
+            result["count"],
+            active_deck_id=active_deck_id,
+            active_deck_name=active_deck_name
+        )
         logger.info(f"📊 Widget built successfully")
         
         # Create copy text with deck names
