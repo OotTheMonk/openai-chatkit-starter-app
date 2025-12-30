@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Hardcoded access token for now
-ACCESS_TOKEN = "59c82a619479a64495a25d02c8e0ef549e0c66be"
+ACCESS_TOKEN = "622725e32e922f2087b221a2a6092343731e653f"
 
 
 async def fetch_user_decks() -> dict[str, Any]:

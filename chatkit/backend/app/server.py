@@ -67,7 +67,7 @@ assistant_agent = Agent[CardSearchAgentContext](
         "Use the appropriate tools for each query."
     ),
     tools=[search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool],
-    tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards_tool", "get_user_decks_tool"]),
+    tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards_tool", "get_user_decks_tool", "get_active_deck_tool"]),
 )
 
 logger.info(f"✅ Agent created with {len(assistant_agent.tools)} tools")
