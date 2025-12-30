@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "name": "deck_list",
+  "template": "{\"type\":\"ListView\",\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Your Deck Lists\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((count | string) ~ \" deck\" ~ (count != 1 and \"s\" or \"\") ~ \" saved\") | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- for deck in decks -%},{\"type\":\"ListViewItem\",\"key\":{{ (deck.id | string) | tojson }},\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"gray-800\",\"size\":1}},\"children\":[{\"type\":\"Row\",\"gap\":2,\"align\":\"center\",\"children\":[{%- if deck.is_favorite -%}{\"type\":\"Text\",\"value\":\"⭐\",\"size\":\"sm\"},{%- endif -%}{\"type\":\"Text\",\"value\":{{ (deck.name) | tojson }},\"size\":\"sm\",\"weight\":\"medium\",\"flex\":1},{\"type\":\"Text\",\"value\":{{ ((\"#\" ~ (deck.id | string))) | tojson }},\"size\":\"xs\",\"color\":\"tertiary\"}]}]}]}{%- endfor -%}]}",
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "decks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "is_favorite": {
+              "type": "boolean"
+            }
+          },
+          "required": ["id", "name", "is_favorite"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["count", "decks"],
+    "additionalProperties": false
+  }
+}

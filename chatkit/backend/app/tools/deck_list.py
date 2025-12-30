@@ -8,12 +8,12 @@ from typing import Any
 import httpx
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
-
+from ..deck_list_widget import build_deck_list_widget
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Hardcoded access token for now
-ACCESS_TOKEN = "daa7dd1ec7a962b89500749b3be7d6def43f1883"
+ACCESS_TOKEN = "59c82a619479a64495a25d02c8e0ef549e0c66be"
 
 
 async def fetch_user_decks() -> dict[str, Any]:
@@ -57,7 +57,7 @@ async def get_user_decks_tool(
     Get all user deck lists.
     
     Returns:
-        A summary of available decks
+        Message confirming widget was displayed
     """
     try:
         logger.info("📋 GET_USER_DECKS TOOL CALLED")
@@ -73,19 +73,20 @@ async def get_user_decks_tool(
             logger.info("No decks found")
             return "You don't have any deck lists saved yet."
         
-        # Format deck list for display
-        deck_list = []
-        for deck in result["decks"][:10]:  # Show first 10 for brevity
-            name = deck.get("name") or f"Deck {deck.get('id')}"
-            is_fav = "⭐" if deck.get("is_favorite") else ""
-            deck_list.append(f"• {name} {is_fav}".strip())
+        # Build and stream the widget with deck results
+        logger.info(f"📊 Building widget for {result['count']} decks")
+        widget = build_deck_list_widget(result["decks"], result["count"])
+        logger.info(f"📊 Widget built successfully")
         
-        summary = f"You have {result['count']} deck(s) saved:\n" + "\n".join(deck_list)
-        if result['count'] > 10:
-            summary += f"\n... and {result['count'] - 10} more"
+        # Create copy text with deck names
+        deck_names = [deck.get("name") or f"Deck {deck.get('id')}" for deck in result["decks"]]
+        copy_text = "\n".join(deck_names)
+        logger.info(f"📊 About to stream widget")
         
-        logger.info(f"✅ Returning deck list summary")
-        return summary
+        await ctx.context.stream_widget(widget, copy_text=copy_text)
+        logger.info(f"✅ Widget streamed with {result['count']} decks")
+        
+        return f"Found {result['count']} deck list(s)."
         
     except Exception as e:
         logger.error(f"❌ EXCEPTION in get_user_decks_tool: {type(e).__name__}: {e}", exc_info=True)
