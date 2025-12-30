@@ -73,13 +73,19 @@ async def get_user_decks_tool(
             logger.info("No decks found")
             return "You don't have any deck lists saved yet."
         
+        # Sort decks: favorites first, then by name
+        sorted_decks = sorted(
+            result["decks"],
+            key=lambda d: (not d.get("is_favorite", False), d.get("name") or f"Unnamed {d.get('id', 0)}")
+        )
+        
         # Build and stream the widget with deck results
         logger.info(f"📊 Building widget for {result['count']} decks")
-        widget = build_deck_list_widget(result["decks"], result["count"])
+        widget = build_deck_list_widget(sorted_decks, result["count"])
         logger.info(f"📊 Widget built successfully")
         
         # Create copy text with deck names
-        deck_names = [deck.get("name") or f"Deck {deck.get('id')}" for deck in result["decks"]]
+        deck_names = [deck.get("name") or f"Deck {deck.get('id')}" for deck in sorted_decks]
         copy_text = "\n".join(deck_names)
         logger.info(f"📊 About to stream widget")
         
