@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "name": "card_search_results",
+  "template": "{\"type\":\"ListView\",\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Card Search Results\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((\"Search: \" ~ query ~ \" (\" ~ (count | string) ~ \" found)\")) | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- for card in cards -%},{\"type\":\"ListViewItem\",\"key\":{{ (loop.index | string) | tojson }},\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"gray-800\",\"size\":1}},\"children\":[{\"type\":\"Text\",\"value\":{{ (card.ability) | tojson }},\"size\":\"sm\",\"weight\":\"medium\"}]}]}{%- endfor -%}]}",
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "cards": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ability": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["ability"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["query", "count", "cards"],
+    "additionalProperties": false
+  }
+}
