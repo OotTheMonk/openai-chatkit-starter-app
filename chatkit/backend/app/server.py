@@ -9,7 +9,7 @@ import httpx
 import re
 from datetime import datetime
 
-from agents import Runner, Agent, function_tool, RunContextWrapper
+from agents import Runner, Agent, function_tool, RunContextWrapper, StopAtTools
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.types import (
@@ -180,6 +180,7 @@ assistant_agent = Agent[CardSearchAgentContext](
         "If no results found, say 'No cards found matching that search.'"
     ),
     tools=[search_cards],
+    tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards"]),
 )
 
 logger.info(f"✅ Agent created with {len(assistant_agent.tools)} tools")
