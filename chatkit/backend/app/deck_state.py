@@ -42,17 +42,23 @@ class DeckStateManager:
     
     def __init__(self) -> None:
         self._states: Dict[str, DeckState] = {}
+        import logging
+        self._logger = logging.getLogger(__name__)
     
     def get_state(self, thread_id: str) -> DeckState:
         """Get or create state for a thread."""
         if thread_id not in self._states:
+            self._logger.info(f"🆕 Creating new state for thread: {thread_id}")
             self._states[thread_id] = DeckState()
         return self._states[thread_id]
     
     def set_active_deck(self, thread_id: str, deck_id: int, deck_name: str) -> str:
         """Set the active deck for a thread."""
+        self._logger.info(f"💾 Setting active deck for thread {thread_id}: {deck_name} (ID: {deck_id})")
         state = self.get_state(thread_id)
         state.set_active_deck(deck_id, deck_name)
+        self._logger.info(f"💾 State after set: {state.to_dict()}")
+        self._logger.info(f"💾 All threads with state: {list(self._states.keys())}")
         return f"✅ Active deck set to: **{deck_name}** (ID: {deck_id})"
     
     def get_active_deck(self, thread_id: str) -> tuple[int | None, str | None]:

@@ -5,10 +5,14 @@ A production app would implement this using a persistant database.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+from datetime import datetime
 
 from chatkit.store import NotFoundError, Store
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryStore(Store[dict]):
@@ -18,7 +22,15 @@ class MemoryStore(Store[dict]):
 
     async def load_thread(self, thread_id: str, context: dict) -> ThreadMetadata:
         if thread_id not in self.threads:
-            raise NotFoundError(f"Thread {thread_id} not found")
+            # Auto-create thread if it doesn't exist (common in ChatKit)
+            logger.info(f"🆕 Auto-creating thread {thread_id}")
+            thread = ThreadMetadata(
+                id=thread_id,
+                created_at=datetime.now(),
+                metadata={}
+            )
+            self.threads[thread_id] = thread
+            return thread
         return self.threads[thread_id]
 
     async def save_thread(self, thread: ThreadMetadata, context: dict) -> None:
