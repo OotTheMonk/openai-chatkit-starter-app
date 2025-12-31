@@ -60,6 +60,40 @@ async def chatkit_endpoint(request: Request) -> Response:
         return Response(content=result.json, media_type="application/json")
     return JSONResponse(result)
 
+
+@app.get("/api/deck-state/{thread_id}")
+async def get_deck_state(thread_id: str) -> JSONResponse:
+    """Get the active deck state for a thread, including deck contents if loaded."""
+    from .tools import fetch_deck_contents
+    
+    logger.info(f"🔍 Fetching deck state for thread: {thread_id}")
+    
+    state = chatkit_server.deck_manager.to_dict(thread_id)
+    deck_id = state.get("active_deck_id")
+    
+    # If there's an active deck but no contents loaded, fetch them
+    if deck_id and not state.get("deck_contents"):
+        logger.info(f"📦 Loading deck contents for deck {deck_id}")
+        contents = await fetch_deck_contents(deck_id)
+        state["deck_contents"] = contents
+        # Store in manager for caching
+        deck_state = chatkit_server.deck_manager.get_state(thread_id)
+        deck_state.deck_contents = contents
+    
+    return JSONResponse(state)
+
+
+@app.get("/api/deck/{deck_id}")
+async def get_deck_contents(deck_id: int) -> JSONResponse:
+    """Get the contents of a specific deck."""
+    from .tools import fetch_deck_contents
+    
+    logger.info(f"📦 Fetching deck contents for deck: {deck_id}")
+    contents = await fetch_deck_contents(deck_id)
+    
+    return JSONResponse(contents)
+
+
 # Serve the built frontend
 frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 if frontend_dist.exists():

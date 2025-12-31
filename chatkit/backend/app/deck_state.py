@@ -14,16 +14,20 @@ class DeckState(BaseModel):
     
     active_deck_id: int | None = Field(default=None, description="Currently active deck ID")
     active_deck_name: str | None = Field(default=None, description="Name of active deck")
+    deck_contents: Dict[str, Any] | None = Field(default=None, description="Full contents of the active deck")
     
     def set_active_deck(self, deck_id: int, deck_name: str) -> None:
         """Set the active deck for this session."""
         self.active_deck_id = deck_id
         self.active_deck_name = deck_name
+        # Clear contents when switching decks - will be loaded on demand
+        self.deck_contents = None
     
     def clear_active_deck(self) -> None:
         """Clear the active deck."""
         self.active_deck_id = None
         self.active_deck_name = None
+        self.deck_contents = None
     
     def has_active_deck(self) -> bool:
         """Check if there's an active deck."""
@@ -34,6 +38,7 @@ class DeckState(BaseModel):
         return {
             "active_deck_id": self.active_deck_id,
             "active_deck_name": self.active_deck_name,
+            "deck_contents": self.deck_contents,
         }
 
 

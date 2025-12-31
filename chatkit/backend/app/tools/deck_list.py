@@ -9,11 +9,10 @@ import httpx
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
 from ..deck_list_widget import build_deck_list_widget
+from ..config import SWUSTATS_ACCESS_TOKEN, SWUSTATS_API_BASE
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Hardcoded access token for now
-ACCESS_TOKEN = "622725e32e922f2087b221a2a6092343731e653f"
 
 
 async def fetch_user_decks() -> dict[str, Any]:
@@ -26,7 +25,8 @@ async def fetch_user_decks() -> dict[str, Any]:
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"https://swustats.net/TCGEngine/APIs/UserAPIs/GetUserDecks.php?access_token={ACCESS_TOKEN}",
+                f"{SWUSTATS_API_BASE}/UserAPIs/GetUserDecks.php",
+                params={"access_token": SWUSTATS_ACCESS_TOKEN},
                 timeout=10.0
             )
             resp.raise_for_status()

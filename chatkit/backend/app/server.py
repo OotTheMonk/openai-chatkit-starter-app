@@ -20,11 +20,12 @@ from chatkit.types import (
     ThreadItemReplacedEvent,
     Action,
     WidgetItem,
+    ClientEffectEvent,
 )
 from pydantic import Field
 
 from .memory_store import MemoryStore
-from .tools import search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool
+from .tools import search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool, load_deck_contents_tool
 from .deck_state import DeckStateManager
 
 logging.basicConfig(level=logging.INFO)
@@ -62,12 +63,13 @@ assistant_agent = Agent[CardSearchAgentContext](
         "- Search for cards: 'Find [card name or mechanic]', 'Search for...', 'What cards...'"
         "- View deck lists: 'Show my decks', 'List my decks', 'What decks do I have'"
         "- Check active deck: 'What deck am I working on?', 'Which deck is active?'"
+        "- Load deck contents: 'Show me my deck', 'What's in my deck?', 'Load the deck'"
         "- Set active deck: User will click a button in the deck list widget"
         "\n"
         "Use the appropriate tools for each query."
     ),
-    tools=[search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool],
-    # Only stop at tools that produce widgets - get_active_deck_tool returns a string
+    tools=[search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool, load_deck_contents_tool],
+    # Only stop at tools that produce widgets - get_active_deck_tool and load_deck_contents_tool return strings
     # that the agent should use to formulate a response
     tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards_tool", "get_user_decks_tool"]),
 )
@@ -193,6 +195,16 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         result = self.deck_manager.set_active_deck(thread.id, deck_id, deck_name)
         logger.info(f"✅ {result}")
         
+        # Load the deck contents immediately
+        from .tools import fetch_deck_contents
+        logger.info(f"📦 Loading deck contents for deck {deck_id}")
+        contents = await fetch_deck_contents(deck_id)
+        
+        # Store the deck contents in the deck state
+        deck_state = self.deck_manager.get_state(thread.id)
+        deck_state.deck_contents = contents
+        logger.info(f"✅ Stored deck contents in state for thread {thread.id}")
+        
         # Import the deck fetching function and widget builder
         from .tools.deck_list import fetch_user_decks
         from .deck_list_widget import build_deck_list_widget
@@ -224,6 +236,13 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
             yield ThreadItemReplacedEvent(item=updated_widget_item)
         elif not sender:
             logger.warning(f"⚠️ No sender widget provided - cannot update widget in place")
+        
+        # Emit a client effect to notify the frontend to refresh the deck panel
+        logger.info(f"📤 Emitting deck_refresh effect for deck {deck_id}")
+        yield ClientEffectEvent(
+            name="deck_refresh",
+            data={"deck_id": deck_id, "deck_name": deck_name},
+        )
         
         # Always send a confirmation message
         logger.info(f"🎬 Sending confirmation message")
