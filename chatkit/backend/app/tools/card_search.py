@@ -79,7 +79,7 @@ async def search_cards_tool(
         query: Card name, keywords, or any search term
     
     Returns:
-        Message confirming widget was displayed
+        Detailed summary of found cards with their abilities and reference numbers
     """
     try:
         logger.info(f"🔍 SEARCH TOOL CALLED with query: {query}")
@@ -95,6 +95,13 @@ async def search_cards_tool(
             logger.info(f"No cards found for '{query}'")
             return f"No cards found matching '{query}'."
         
+        # Store results in state manager for later reference
+        card_search_manager = ctx.context.request_context.get("card_search_manager")
+        if card_search_manager:
+            thread_id = ctx.context.thread.id
+            card_search_manager.store_results(thread_id, query, result["cards"])
+            logger.info(f"💾 Stored {result['count']} results in state for thread {thread_id}")
+        
         # Build and stream the widget with card results
         logger.info(f"📊 Building widget for {result['count']} cards")
         widget = build_card_search_widget(query, result["cards"], result["count"])
@@ -106,7 +113,20 @@ async def search_cards_tool(
         await ctx.context.stream_widget(widget, copy_text=copy_text)
         logger.info(f"✅ Widget streamed with {result['count']} cards for '{query}'")
         
-        return f"Found {result['count']} results for '{query}'."
+        # Return detailed results that the AI can reference
+        # Format as numbered list with full card abilities
+        summary_parts = [f"Found {result['count']} card(s) matching '{query}':\n"]
+        
+        for i, card in enumerate(result["cards"], 1):
+            ability = card.get("name", "Unknown")
+            summary_parts.append(f"{i}. {ability}")
+        
+        summary_parts.append(
+            f"\nYou can reference these cards by their number (1-{result['count']}) "
+            "in follow-up questions."
+        )
+        
+        return "\n".join(summary_parts)
     except Exception as e:
         logger.error(f"❌ EXCEPTION in search_cards_tool: {type(e).__name__}: {e}", exc_info=True)
         return f"Error: {str(e)}"

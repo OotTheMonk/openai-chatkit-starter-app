@@ -8,7 +8,7 @@ import os
 # Can be overridden via environment variable
 SWUSTATS_ACCESS_TOKEN = os.getenv(
     "SWUSTATS_ACCESS_TOKEN",
-    "4fd1d0367088595aa4466645d495fc8e471e24f2"
+    "f11a7e328ccf39ff5438af87706fc754ba124a94"
 )
 
 # API base URL

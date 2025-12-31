@@ -25,8 +25,16 @@ from chatkit.types import (
 from pydantic import Field
 
 from .memory_store import MemoryStore
-from .tools import search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool, load_deck_contents_tool
+from .tools import (
+    search_cards_tool, 
+    get_user_decks_tool, 
+    set_active_deck_tool, 
+    get_active_deck_tool, 
+    load_deck_contents_tool,
+    get_card_from_results_tool
+)
 from .deck_state import DeckStateManager
+from .card_search_state import CardSearchStateManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,17 +66,40 @@ assistant_agent = Agent[CardSearchAgentContext](
     instructions=(
         "You are an expert Star Wars Unlimited card game assistant. "
         "You help players search for cards and manage their deck lists."
+        "\n\n"
+        "## Card Search\n"
+        "When you search for cards using the search_cards_tool, you will receive:\n"
+        "1. A numbered list of cards with their full ability text\n"
+        "2. The ability to reference cards by number in follow-up questions\n"
         "\n"
-        "Available commands:"
-        "- Search for cards: 'Find [card name or mechanic]', 'Search for...', 'What cards...'"
-        "- View deck lists: 'Show my decks', 'List my decks', 'What decks do I have'"
-        "- Check active deck: 'What deck am I working on?', 'Which deck is active?'"
-        "- Load deck contents: 'Show me my deck', 'What's in my deck?', 'Load the deck'"
-        "- Set active deck: User will click a button in the deck list widget"
+        "After a search, you can answer questions about specific cards by referencing their numbers. "
+        "For example, if the user asks 'what's the ability of card 2', refer to the second card "
+        "in your most recent search results.\n"
+        "\n"
+        "IMPORTANT: When users ask follow-up questions about search results (like 'what are the card IDs', "
+        "'tell me about card 2', etc.), use the detailed information returned by the search tool to answer directly. "
+        "DO NOT call the search tool again - the information is already in your context.\n"
+        "\n"
+        "NOTE: The card search API only provides card ability text. Card IDs and full card names "
+        "are not available from the current data source. If users ask for card IDs, explain this limitation.\n"
+        "\n"
+        "## Available Commands\n"
+        "- Search for cards: 'Find [card name or mechanic]', 'Search for...', 'What cards...'\n"
+        "- View deck lists: 'Show my decks', 'List my decks', 'What decks do I have'\n"
+        "- Check active deck: 'What deck am I working on?', 'Which deck is active?'\n"
+        "- Load deck contents: 'Show me my deck', 'What's in my deck?', 'Load the deck'\n"
+        "- Set active deck: User will click a button in the deck list widget\n"
         "\n"
         "Use the appropriate tools for each query."
     ),
-    tools=[search_cards_tool, get_user_decks_tool, set_active_deck_tool, get_active_deck_tool, load_deck_contents_tool],
+    tools=[
+        search_cards_tool, 
+        get_user_decks_tool, 
+        set_active_deck_tool, 
+        get_active_deck_tool, 
+        load_deck_contents_tool,
+        get_card_from_results_tool
+    ],
     # Only stop at tools that produce widgets - get_active_deck_tool and load_deck_contents_tool return strings
     # that the agent should use to formulate a response
     tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards_tool", "get_user_decks_tool"]),
@@ -85,6 +116,7 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
     def __init__(self) -> None:
         self.store: MemoryStore = MemoryStore()
         self.deck_manager: DeckStateManager = DeckStateManager()
+        self.card_search_manager: CardSearchStateManager = CardSearchStateManager()
         super().__init__(self.store)
 
     async def respond(
@@ -95,8 +127,9 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
     ) -> AsyncIterator[ThreadStreamEvent]:
         logger.info(f"📨 User message: {item.content if item else 'None'}")
         
-        # Inject deck manager into request context so tools can access it
+        # Inject managers into request context so tools can access them
         context["deck_manager"] = self.deck_manager
+        context["card_search_manager"] = self.card_search_manager
         
         # Create agent context with card search capabilities
         agent_context = CardSearchAgentContext(
