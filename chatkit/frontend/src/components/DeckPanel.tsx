@@ -46,19 +46,34 @@ export function DeckPanel({ threadId, activeDeckId }: DeckPanelProps) {
       setLoading(true);
       const response = await fetch(apiUrl);
       console.log("🔍 Response status:", response.status);
+      console.log("🔍 Response headers:", {
+        contentType: response.headers.get('content-type'),
+      });
+      
+      // Log the raw response text to help debug
+      const responseText = await response.text();
+      console.log("🔍 Response text (first 500 chars):", responseText.substring(0, 500));
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch deck: ${response.status}`);
       }
-      const contents = (await response.json()) as DeckContents;
-      console.log("📦 DeckPanel received deck contents:", contents);
       
-      // Set the deck state with the fetched contents
-      setDeckState({
-        active_deck_id: deckId,
-        active_deck_name: contents.metadata?.name || `Deck ${deckId}`,
-        deck_contents: contents,
-      });
-      setError(null);
+      // Parse the JSON
+      try {
+        const contents = JSON.parse(responseText) as DeckContents;
+        console.log("📦 DeckPanel received deck contents:", contents);
+        
+        // Set the deck state with the fetched contents
+        setDeckState({
+          active_deck_id: deckId,
+          active_deck_name: contents.metadata?.name || `Deck ${deckId}`,
+          deck_contents: contents,
+        });
+        setError(null);
+      } catch (parseErr) {
+        console.error("Error parsing JSON response:", parseErr);
+        throw new Error(`Invalid JSON response: ${parseErr instanceof Error ? parseErr.message : 'Unknown error'}`);
+      }
     } catch (err) {
       console.error("Error fetching deck contents:", err);
       setError(err instanceof Error ? err.message : "Unknown error");

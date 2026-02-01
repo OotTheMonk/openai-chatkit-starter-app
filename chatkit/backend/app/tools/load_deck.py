@@ -9,28 +9,45 @@ import httpx
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
 
-from ..config import SWUSTATS_ACCESS_TOKEN, SWUSTATS_API_BASE
+from ..config import get_access_token, SWUSTATS_API_BASE, SERVER_BASE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def fetch_deck_contents(deck_id: int) -> dict[str, Any]:
+async def fetch_deck_contents(deck_id: int, user_id: str = "default") -> dict[str, Any]:
     """
     Fetch deck contents from the SWU stats API.
     
     Args:
         deck_id: The ID of the deck to load
+        user_id: User identifier for OAuth token lookup
     
     Returns:
         Dictionary with deck data including cards, leader, base, sideboard
     """
     try:
+        # Get access token (handles OAuth refresh automatically)
+        access_token = await get_access_token(user_id)
+        
+        if not access_token:
+            logger.warning("⚠️ No access token available - user not authenticated")
+            return {
+                "deck_id": deck_id,
+                "metadata": {},
+                "leader": None,
+                "base": None,
+                "deck": [],
+                "sideboard": [],
+                "error": "not_authenticated",
+                "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
+            }
+        
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{SWUSTATS_API_BASE}/LoadDeck.php",
                 params={
-                    "access_token": SWUSTATS_ACCESS_TOKEN,
+                    "access_token": access_token,
                     "deckID": deck_id
                 },
                 timeout=10.0
@@ -49,6 +66,29 @@ async def fetch_deck_contents(deck_id: int) -> dict[str, Any]:
                 "sideboard": data.get("sideboard", []),
                 "error": None
             }
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            logger.warning("⚠️ Access token expired or invalid")
+            return {
+                "deck_id": deck_id,
+                "metadata": {},
+                "leader": None,
+                "base": None,
+                "deck": [],
+                "sideboard": [],
+                "error": "token_expired",
+                "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
+            }
+        logger.error(f"❌ Error loading deck {deck_id}: {e}", exc_info=True)
+        return {
+            "deck_id": deck_id,
+            "metadata": {},
+            "leader": None,
+            "base": None,
+            "deck": [],
+            "sideboard": [],
+            "error": f"Error loading deck: {str(e)}"
+        }
     except Exception as e:
         logger.error(f"❌ Error loading deck {deck_id}: {e}", exc_info=True)
         return {

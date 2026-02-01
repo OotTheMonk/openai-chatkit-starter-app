@@ -16,6 +16,10 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
+      "/api": {
+        target: backendTarget,
+        changeOrigin: true,
+      },
     },
   },
 });

@@ -5,11 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any, AsyncIterator, Annotated
 from pathlib import Path
+import httpx
+import re
 from datetime import datetime
 
-from agents import Runner, Agent, StopAtTools
+from agents import Runner, Agent, function_tool, RunContextWrapper
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
+from chatkit.actions import Action
 from chatkit.types import (
     ThreadMetadata, 
     ThreadStreamEvent, 
@@ -17,24 +20,19 @@ from chatkit.types import (
     AssistantMessageItem,
     AssistantMessageContent,
     ThreadItemDoneEvent,
-    ThreadItemReplacedEvent,
-    Action,
-    WidgetItem,
-    ClientEffectEvent,
 )
+from chatkit.widgets import WidgetTemplate
 from pydantic import Field
 
 from .memory_store import MemoryStore
-from .tools import (
-    search_cards_tool, 
-    get_user_decks_tool, 
-    set_active_deck_tool, 
-    get_active_deck_tool, 
-    load_deck_contents_tool,
-    get_card_from_results_tool
-)
+from .card_search_widget import build_card_search_widget
 from .deck_state import DeckStateManager
-from .card_search_state import CardSearchStateManager
+from .tools import (
+    get_user_decks_tool,
+    set_active_deck_tool,
+    get_active_deck_tool,
+    load_deck_contents_tool,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,60 +52,157 @@ class CardSearchAgentContext(AgentContext):
     widget_data: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
 
+# ============================================================================
+# Card Search Tool
+# ============================================================================
+
+async def search_cards_direct(query: str) -> dict[str, Any]:
+    """
+    Directly search for Star Wars Unlimited cards (not a tool, used internally).
+    
+    Args:
+        query: Card name, keywords, or any search term
+    
+    Returns:
+        Dictionary with card results and metadata for widget display
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://142.11.210.6/es/swucardsearch.php",
+                data={"searchInput": query},
+                timeout=10.0
+            )
+            # Extract the <ul>...</ul> block
+            ul_match = re.search(r"<ul>(.*?)</ul>", resp.text, re.DOTALL)
+            if not ul_match:
+                return {
+                    "query": query,
+                    "cards": [],
+                    "count": 0,
+                    "error": None
+                }
+            ul_content = ul_match.group(1)
+            # Extract all <li>...</li> items
+            items = re.findall(r"<li>(.*?)</li>", ul_content, re.DOTALL)
+            # Clean up and parse as structured data
+            cards = []
+            for item in items:
+                cleaned = re.sub(r"<.*?>", "", item).strip()
+                if cleaned:
+                    cards.append({"name": cleaned, "raw": cleaned})
+            
+            return {
+                "query": query,
+                "cards": cards,
+                "count": len(cards),
+                "error": None
+            }
+    except Exception as e:
+        return {
+            "query": query,
+            "cards": [],
+            "count": 0,
+            "error": f"Error searching cards: {e}"
+        }
+
+
+@function_tool
+async def search_cards(
+    ctx: RunContextWrapper[CardSearchAgentContext],
+    query: str,
+) -> str:
+    """
+    Search for Star Wars Unlimited cards.
+    
+    Args:
+        query: Card name, keywords, or any search term
+    
+    Returns:
+        Message confirming widget was displayed
+    """
+    try:
+        logger.info(f"🔍 SEARCH TOOL CALLED with query: {query}")
+        result = await search_cards_direct(query)
+        logger.info(f"✅ Search returned {result['count']} cards")
+        
+        # Handle errors
+        if result["error"]:
+            logger.warning(f"⚠️ Search error: {result['error']}")
+            return f"Error: {result['error']}"
+        
+        if not result["cards"]:
+            logger.info(f"No cards found for '{query}'")
+            return f"No cards found matching '{query}'."
+        
+        # Build and stream the widget with card results
+        logger.info(f"📊 Building widget for {result['count']} cards")
+        widget = build_card_search_widget(query, result["cards"], result["count"])
+        logger.info(f"📊 Widget built successfully")
+        
+        copy_text = "\n".join([card['name'] for card in result["cards"]])
+        logger.info(f"📊 About to stream widget with copy_text length: {len(copy_text)}")
+        
+        await ctx.context.stream_widget(widget, copy_text=copy_text)
+        logger.info(f"✅ Widget streamed with {result['count']} cards for '{query}'")
+        
+        return f"Found {result['count']} results for '{query}'."
+    except Exception as e:
+        logger.error(f"❌ EXCEPTION in search_cards: {type(e).__name__}: {e}", exc_info=True)
+        return f"Error: {str(e)}"
 
 
 # ============================================================================
-# Create Agent with Card Search and Deck Tools
+# Create Agent with Card Search Tool
 # ============================================================================
 
 assistant_agent = Agent[CardSearchAgentContext](
     model=MODEL,
-    name="Card Search & Deck Assistant",
+    name="Card Search Assistant",
     instructions=(
         "You are an expert Star Wars Unlimited card game assistant. "
-        "You help players search for cards and manage their deck lists."
-        "\n\n"
-        "## Card Search\n"
-        "When you search for cards using the search_cards_tool, you will receive:\n"
-        "1. A numbered list of cards with their full ability text\n"
-        "2. The ability to reference cards by number in follow-up questions\n"
+        "You can search for cards and manage the user's deck collections.\n"
         "\n"
-        "After a search, you can answer questions about specific cards by referencing their numbers. "
-        "For example, if the user asks 'what's the ability of card 2', refer to the second card "
-        "in your most recent search results.\n"
+        "TOOLS AVAILABLE:\n"
+        "- search_cards: Search the card database\n"
+        "- get_user_decks: Retrieve user's saved deck lists\n"
+        "- set_active_deck: Select which deck to work with\n"
+        "- get_active_deck: See which deck is currently active\n"
+        "- load_deck_contents: Load and view a deck's cards\n"
         "\n"
-        "IMPORTANT: When users ask follow-up questions about search results (like 'what are the card IDs', "
-        "'tell me about card 2', etc.), use the detailed information returned by the search tool to answer directly. "
-        "DO NOT call the search tool again - the information is already in your context.\n"
+        "WHEN TO USE EACH TOOL:\n"
         "\n"
-        "NOTE: The card search API only provides card ability text. Card IDs and full card names "
-        "are not available from the current data source. If users ask for card IDs, explain this limitation.\n"
+        "CARD SEARCHES: Use search_cards for:\n"
+        "- 'Find Luke Skywalker'\n"
+        "- 'Search for cards with stealth'\n"
+        "- 'What cards cancel opponent events?'\n"
+        "- 'Show me Yoda cards'\n"
         "\n"
-        "## Available Commands\n"
-        "- Search for cards: 'Find [card name or mechanic]', 'Search for...', 'What cards...'\n"
-        "- View deck lists: 'Show my decks', 'List my decks', 'What decks do I have'\n"
-        "- Check active deck: 'What deck am I working on?', 'Which deck is active?'\n"
-        "- Load deck contents: 'Show me my deck', 'What's in my deck?', 'Load the deck'\n"
-        "- Set active deck: User will click a button in the deck list widget\n"
+        "DECK MANAGEMENT: Use deck tools for:\n"
+        "- 'Show my decks' or 'List my decks' -> use get_user_decks\n"
+        "- 'Load my deck' or 'Show my deck contents' -> use load_deck_contents\n"
+        "- 'Select deck X' or 'Use deck X' -> use set_active_deck\n"
+        "- 'What deck am I using?' -> use get_active_deck\n"
         "\n"
-        "Use the appropriate tools for each query."
+        "IMPORTANT: When user asks about their decks, ALWAYS authenticate first.\n"
+        "If you get an authentication error, provide them with the login URL\n"
+        "and let them know they need to log in to SWU Stats.\n"
+        "\n"
+        "Always use the relevant tool for the user's request - don't guess!"
     ),
     tools=[
-        search_cards_tool, 
-        get_user_decks_tool, 
-        set_active_deck_tool, 
-        get_active_deck_tool, 
+        search_cards,
+        get_user_decks_tool,
+        set_active_deck_tool,
+        get_active_deck_tool,
         load_deck_contents_tool,
-        get_card_from_results_tool
     ],
-    # Only stop at tools that produce widgets - get_active_deck_tool and load_deck_contents_tool return strings
-    # that the agent should use to formulate a response
-    tool_use_behavior=StopAtTools(stop_at_tool_names=["search_cards_tool", "get_user_decks_tool"]),
 )
 
 logger.info(f"✅ Agent created with {len(assistant_agent.tools)} tools")
 logger.info(f"✅ Model: {MODEL}")
 logger.info(f"✅ Tool names: {[str(t) for t in assistant_agent.tools]}")
+
 
 
 class StarterChatServer(ChatKitServer[dict[str, Any]]):
@@ -116,7 +211,6 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
     def __init__(self) -> None:
         self.store: MemoryStore = MemoryStore()
         self.deck_manager: DeckStateManager = DeckStateManager()
-        self.card_search_manager: CardSearchStateManager = CardSearchStateManager()
         super().__init__(self.store)
 
     async def respond(
@@ -127,9 +221,9 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
     ) -> AsyncIterator[ThreadStreamEvent]:
         logger.info(f"📨 User message: {item.content if item else 'None'}")
         
-        # Inject managers into request context so tools can access them
-        context["deck_manager"] = self.deck_manager
-        context["card_search_manager"] = self.card_search_manager
+        # Ensure deck_manager is in context
+        if "deck_manager" not in context:
+            context["deck_manager"] = self.deck_manager
         
         # Create agent context with card search capabilities
         agent_context = CardSearchAgentContext(
@@ -175,115 +269,51 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         self,
         thread: ThreadMetadata,
         action: Action[str, Any],
-        sender: WidgetItem | None,
+        sender: Any | None,
         context: dict[str, Any],
     ) -> AsyncIterator[ThreadStreamEvent]:
-        """Handle widget button actions."""
-        logger.info(f"🎬 ========== ACTION HANDLER ==========")
-        logger.info(f"🎬 Action received: {action.type}")
-        logger.info(f"🎬 Payload: {action.payload}")
-        logger.info(f"🎬 Sender: {sender}")
-        logger.info(f"🎬 Sender type: {type(sender)}")
-        logger.info(f"🎬 Thread ID: {thread.id}")
+        """
+        Handle widget actions (e.g., deck selection).
         
+        Args:
+            thread: Thread metadata
+            action: Action object with type and payload
+            sender: Widget item that sent the action
+            context: Request context
+        
+        Yields:
+            ThreadStreamEvent responses
+        """
+        logger.info(f"🎯 ACTION HANDLER called")
+        logger.info(f"   Action type: {action.type}")
+        logger.info(f"   Action payload: {action.payload}")
+        logger.info(f"   Sender: {sender}")
+        
+        # Handle deck selection actions
         if action.type == "select_deck":
-            logger.info(f"🎬 Routing to _handle_select_deck_action")
-            async for event in self._handle_select_deck_action(thread, action, sender, context):
-                yield event
-            return
-        
-        logger.warning(f"⚠️ Unknown action type: {action.type}")
-        return
-
-    async def _handle_select_deck_action(
-        self,
-        thread: ThreadMetadata,
-        action: Action[str, Any],
-        sender: WidgetItem | None,
-        context: dict[str, Any],
-    ) -> AsyncIterator[ThreadStreamEvent]:
-        """Handle selecting a deck as active."""
-        logger.info(f"🎬 _handle_select_deck_action called")
-        logger.info(f"🎬 sender: {sender}")
-        logger.info(f"🎬 sender type: {type(sender)}")
-        
-        deck_id = action.payload.get("deck_id")
-        deck_name = action.payload.get("deck_name")
-        
-        logger.info(f"🎬 deck_id: {deck_id}, deck_name: {deck_name}")
-        
-        if not deck_id or not deck_name:
-            logger.error(f"❌ Missing deck_id or deck_name in action payload")
-            # Send error message to user
-            error_message = AssistantMessageItem(
-                thread_id=thread.id,
-                id=self.store.generate_item_id("message", thread, context),
-                created_at=datetime.now(),
-                content=[AssistantMessageContent(text="❌ Error: Could not select deck - missing information")],
-            )
-            yield ThreadItemDoneEvent(item=error_message)
-            return
-        
-        # Set the active deck
-        result = self.deck_manager.set_active_deck(thread.id, deck_id, deck_name)
-        logger.info(f"✅ {result}")
-        
-        # Load the deck contents immediately
-        from .tools import fetch_deck_contents
-        logger.info(f"📦 Loading deck contents for deck {deck_id}")
-        contents = await fetch_deck_contents(deck_id)
-        
-        # Store the deck contents in the deck state
-        deck_state = self.deck_manager.get_state(thread.id)
-        deck_state.deck_contents = contents
-        logger.info(f"✅ Stored deck contents in state for thread {thread.id}")
-        
-        # Import the deck fetching function and widget builder
-        from .tools.deck_list import fetch_user_decks
-        from .deck_list_widget import build_deck_list_widget
-        
-        # Fetch updated deck list to refresh the widget
-        deck_result = await fetch_user_decks()
-        logger.info(f"🎬 deck_result: {deck_result['count']} decks fetched")
-        
-        if deck_result["decks"] and sender:
-            # Sort decks: favorites first, then by name
-            sorted_decks = sorted(
-                deck_result["decks"],
-                key=lambda d: (not d.get("is_favorite", False), d.get("name") or f"Unnamed {d.get('id', 0)}")
-            )
-            
-            # Build updated widget with new active deck
-            active_deck_id, active_deck_name = self.deck_manager.get_active_deck(thread.id)
-            logger.info(f"🎬 Building updated widget with active_deck_id: {active_deck_id}")
-            updated_widget = build_deck_list_widget(
-                sorted_decks,
-                deck_result["count"],
-                active_deck_id=active_deck_id,
-                active_deck_name=active_deck_name
-            )
-            
-            # Replace the existing widget in place
-            updated_widget_item = sender.model_copy(update={"widget": updated_widget})
-            logger.info(f"🎬 Yielding ThreadItemReplacedEvent")
-            yield ThreadItemReplacedEvent(item=updated_widget_item)
-        elif not sender:
-            logger.warning(f"⚠️ No sender widget provided - cannot update widget in place")
-        
-        # Emit a client effect to notify the frontend to refresh the deck panel
-        logger.info(f"📤 Emitting deck_refresh effect for deck {deck_id}")
-        yield ClientEffectEvent(
-            name="deck_refresh",
-            data={"deck_id": deck_id, "deck_name": deck_name},
-        )
-        
-        # Always send a confirmation message
-        logger.info(f"🎬 Sending confirmation message")
-        message_item = AssistantMessageItem(
-            thread_id=thread.id,
-            id=self.store.generate_item_id("message", thread, context),
-            created_at=datetime.now(),
-            content=[AssistantMessageContent(text=result)],
-        )
-        yield ThreadItemDoneEvent(item=message_item)
-        logger.info(f"🎬 _handle_select_deck_action completed")
+            try:
+                deck_id = action.payload.get("deck_id")
+                deck_name = action.payload.get("deck_name")
+                
+                if not deck_id or not deck_name:
+                    logger.error(f"❌ Invalid payload for select_deck: {action.payload}")
+                    return
+                
+                logger.info(f"✅ Deck selected: {deck_name} (ID: {deck_id})")
+                
+                # Set the active deck using the server's deck_manager
+                thread_id = thread.id
+                result = self.deck_manager.set_active_deck(thread_id, deck_id, deck_name)
+                logger.info(f"✅ Deck manager result: {result}")
+                
+                # Emit client effect to refresh UI
+                from chatkit.types import ClientEffectEvent
+                yield ClientEffectEvent(
+                    name="deck_refresh",
+                    data={"deck_id": deck_id, "deck_name": deck_name},
+                )
+                
+            except Exception as e:
+                logger.error(f"❌ Error handling select_deck action: {e}", exc_info=True)
+        else:
+            logger.warning(f"⚠️ Unknown action type: {action.type}")

@@ -1,0 +1,9 @@
+{
+  "default": {
+    "access_token": "c502b97cd0cf89abd830dc2546338aa92706c04d",
+    "refresh_token": "315354b20c7efb288d618675c3ce1b303aee5e64",
+    "token_type": "Bearer",
+    "expires_at": 1769919931.3700597,
+    "scope": "decks email profile editdecks stats"
+  }
+}

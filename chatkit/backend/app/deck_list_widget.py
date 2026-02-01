@@ -4,10 +4,13 @@ Widget for displaying deck lists.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from chatkit.widgets import WidgetRoot, WidgetTemplate
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 deck_list_widget_template = WidgetTemplate.from_file("deck_list.widget")
 
@@ -25,7 +28,9 @@ def build_deck_list_widget(
         "active_deck_id": active_deck_id,
         "active_deck_name": active_deck_name
     }
-    return deck_list_widget_template.build(payload)
+    root = deck_list_widget_template.build(payload)
+    logger.info(f"✅ Built deck list widget with {count} decks")
+    return root
 
 
 def _serialize_deck(deck: dict[str, Any], active_deck_id: int | None = None) -> dict[str, Any]:

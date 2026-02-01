@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.36,<0.37",
     "openai>=1.40",
     "openai-chatkit>=1.4.0,<2",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]

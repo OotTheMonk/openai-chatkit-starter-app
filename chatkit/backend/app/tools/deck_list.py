@@ -9,24 +9,39 @@ import httpx
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
 from ..deck_list_widget import build_deck_list_widget
-from ..config import SWUSTATS_ACCESS_TOKEN, SWUSTATS_API_BASE
+from ..config import get_access_token, SWUSTATS_API_BASE, SERVER_BASE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def fetch_user_decks() -> dict[str, Any]:
+async def fetch_user_decks(user_id: str = "default") -> dict[str, Any]:
     """
     Fetch user deck lists from the SWU stats API.
+    
+    Args:
+        user_id: User identifier for OAuth token lookup
     
     Returns:
         Dictionary with deck list data
     """
     try:
+        # Get access token (handles OAuth refresh automatically)
+        access_token = await get_access_token(user_id)
+        
+        if not access_token:
+            logger.warning("⚠️ No access token available - user not authenticated")
+            return {
+                "decks": [],
+                "count": 0,
+                "error": "not_authenticated",
+                "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
+            }
+        
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{SWUSTATS_API_BASE}/UserAPIs/GetUserDecks.php",
-                params={"access_token": SWUSTATS_ACCESS_TOKEN},
+                params={"access_token": access_token},
                 timeout=10.0
             )
             resp.raise_for_status()
@@ -40,6 +55,21 @@ async def fetch_user_decks() -> dict[str, Any]:
                 "count": len(decks),
                 "error": None
             }
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            logger.warning("⚠️ Access token expired or invalid")
+            return {
+                "decks": [],
+                "count": 0,
+                "error": "token_expired",
+                "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
+            }
+        logger.error(f"❌ Error fetching decks: {e}", exc_info=True)
+        return {
+            "decks": [],
+            "count": 0,
+            "error": f"Error fetching deck lists: {str(e)}"
+        }
     except Exception as e:
         logger.error(f"❌ Error fetching decks: {e}", exc_info=True)
         return {
@@ -64,7 +94,16 @@ async def get_user_decks_tool(
         result = await fetch_user_decks()
         logger.info(f"✅ Decks fetched: {result['count']} total")
         
-        # Handle errors
+        # Handle authentication errors with helpful message
+        if result.get("error") in ("not_authenticated", "token_expired"):
+            login_url = result.get("login_url", f"{SERVER_BASE_URL}/oauth/login")
+            return (
+                "🔒 **Authentication Required**\n\n"
+                "You need to connect your SWU Stats account to view your decks.\n\n"
+                f"Please [click here to log in]({login_url}) and then try again."
+            )
+        
+        # Handle other errors
         if result["error"]:
             logger.warning(f"⚠️ Fetch error: {result['error']}")
             return f"Error: {result['error']}"
