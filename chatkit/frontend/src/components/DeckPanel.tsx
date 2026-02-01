@@ -32,10 +32,19 @@ interface DeckPanelProps {
   activeDeckId: number | null;
 }
 
+// Helper to get card image URL
+const getCardImageUrl = (cardId: string, type: 'square' | 'full' = 'square') => {
+  const baseUrl = type === 'square' 
+    ? 'https://www.swustats.net/TCGEngine/SWUDeck/concat/'
+    : 'https://www.swustats.net/TCGEngine/SWUDeck/WebpImages/';
+  return `${baseUrl}${cardId}.webp`;
+};
+
 export function DeckPanel({ threadId, activeDeckId }: DeckPanelProps) {
   const [deckState, setDeckState] = useState<DeckState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedDeckId, setCopiedDeckId] = useState(false);
 
   const fetchDeckContents = useCallback(async (deckId: number) => {
     console.log("🔍 fetchDeckContents called with deckId:", deckId);
@@ -126,87 +135,144 @@ export function DeckPanel({ threadId, activeDeckId }: DeckPanelProps) {
   const mainDeckCount = contents?.deck?.reduce((sum, card) => sum + card.count, 0) ?? 0;
   const sideboardCount = contents?.sideboard?.reduce((sum, card) => sum + card.count, 0) ?? 0;
 
+  const copyDeckId = () => {
+    if (deckState?.active_deck_id) {
+      navigator.clipboard.writeText(deckState.active_deck_id.toString());
+      setCopiedDeckId(true);
+      setTimeout(() => setCopiedDeckId(false), 2000);
+    }
+  };
+
   return (
-    <div className="p-4 h-full overflow-auto">
-      <h3 className="text-lg font-semibold mb-3 text-white">Active Deck</h3>
-      
-      <div className="bg-slate-800 rounded-lg p-3 mb-3">
-        <h4 className="font-medium text-white">{deckState.active_deck_name}</h4>
-        <p className="text-xs text-gray-400">ID: {deckState.active_deck_id}</p>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 p-4 border-b border-slate-700">
+        <h3 className="text-lg font-semibold text-white">Active Deck</h3>
       </div>
-
-      {contents && !contents.error && (
-        <>
-          {/* Deck Summary */}
-          <div className="text-sm text-gray-300 mb-4">
-            <p>Main deck: {mainDeckCount} cards</p>
-            <p>Sideboard: {sideboardCount} cards</p>
+      
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 mb-4 shadow-lg">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-white text-lg">{deckState.active_deck_name}</h4>
+            <button
+              onClick={copyDeckId}
+              className="group relative p-2 hover:bg-slate-700 rounded transition-colors"
+              title="Deck ID"
+            >
+              <svg className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-slate-700 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                {copiedDeckId ? 'Copied!' : `ID: ${deckState.active_deck_id}`}
+              </div>
+            </button>
           </div>
-
-          {/* Leader & Base */}
-          {(contents.leader || contents.base) && (
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-gray-200 mb-2">Identity</h4>
-              {contents.leader && (
-                <div className="text-xs text-gray-400 mb-1">
-                  Leader: {contents.leader.id}
-                </div>
-              )}
-              {contents.base && (
-                <div className="text-xs text-gray-400">
-                  Base: {contents.base.id}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Main Deck */}
-          {contents.deck.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-gray-200 mb-2">
-                Main Deck ({mainDeckCount})
-              </h4>
-              <div className="space-y-1 max-h-60 overflow-y-auto">
-                {contents.deck.map((card, idx) => (
-                  <div
-                    key={`${card.id}-${idx}`}
-                    className="flex justify-between text-xs text-gray-400 py-1 px-2 bg-slate-800 rounded"
-                  >
-                    <span className="truncate">{card.name || card.id}</span>
-                    <span className="ml-2 text-gray-500">×{card.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Sideboard */}
-          {contents.sideboard.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-200 mb-2">
-                Sideboard ({sideboardCount})
-              </h4>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {contents.sideboard.map((card, idx) => (
-                  <div
-                    key={`${card.id}-${idx}`}
-                    className="flex justify-between text-xs text-gray-400 py-1 px-2 bg-slate-800 rounded"
-                  >
-                    <span className="truncate">{card.name || card.id}</span>
-                    <span className="ml-2 text-gray-500">×{card.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {contents?.error && (
-        <div className="text-sm text-red-400">
-          {contents.error}
         </div>
-      )}
+
+        {contents && !contents.error && (
+          <div className="space-y-6">
+            {/* Leader & Base */}
+            {(contents.leader || contents.base) && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">Identity</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {contents.leader && (
+                    <div className="relative group cursor-pointer">
+                      <img 
+                        src={getCardImageUrl(contents.leader.id, 'square')} 
+                        alt={contents.leader.name || contents.leader.id}
+                        className="w-full rounded-lg shadow-lg transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-blue-500/50 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                        <span className="text-xs text-white font-medium">Leader</span>
+                      </div>
+                    </div>
+                  )}
+                  {contents.base && (
+                    <div className="relative group cursor-pointer">
+                      <img 
+                        src={getCardImageUrl(contents.base.id, 'square')} 
+                        alt={contents.base.name || contents.base.id}
+                        className="w-full rounded-lg shadow-lg transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-blue-500/50 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                        <span className="text-xs text-white font-medium">Base</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Main Deck */}
+            {contents.deck.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">
+                  Main Deck <span className="text-gray-500">({mainDeckCount})</span>
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {contents.deck.map((card, idx) => (
+                    <div
+                      key={`${card.id}-${idx}`}
+                      className="relative group cursor-pointer"
+                    >
+                      <img 
+                        src={getCardImageUrl(card.id, 'square')} 
+                        alt={card.name || card.id}
+                        className="w-full rounded-lg shadow-md transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-amber-500/50 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      {card.count > 1 && (
+                        <div className="absolute top-1 right-1 bg-gradient-to-br from-amber-500 to-orange-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-white">
+                          {card.count}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 rounded-lg ring-2 ring-transparent group-hover:ring-amber-500/50 transition-all pointer-events-none"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sideboard */}
+            {contents.sideboard.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">
+                  Sideboard <span className="text-gray-500">({sideboardCount})</span>
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {contents.sideboard.map((card, idx) => (
+                    <div
+                      key={`${card.id}-${idx}`}
+                      className="relative group cursor-pointer"
+                    >
+                      <img 
+                        src={getCardImageUrl(card.id, 'square')} 
+                        alt={card.name || card.id}
+                        className="w-full rounded-lg shadow-md transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-purple-500/50 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      {card.count > 1 && (
+                        <div className="absolute top-1 right-1 bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-white">
+                          {card.count}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 rounded-lg ring-2 ring-transparent group-hover:ring-purple-500/50 transition-all pointer-events-none"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {contents?.error && (
+          <div className="text-sm text-red-400 mt-4">
+            {contents.error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
