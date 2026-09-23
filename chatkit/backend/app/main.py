@@ -18,6 +18,8 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# SWUStats uses tokens in query parameters; do not log HTTP request URLs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from .server import StarterChatServer
 from .config import is_oauth_configured, OAUTH_REDIRECT_URI, SERVER_BASE_URL
@@ -41,6 +43,7 @@ chatkit_server = StarterChatServer()
 
 @app.get("/oauth/login")
 async def oauth_login(
+    request: Request,
     user_id: str = Query(default="default", description="User identifier for token storage"),
     redirect_to: str = Query(default="/", description="URL to redirect to after successful auth"),
 ) -> Response:
@@ -61,6 +64,11 @@ async def oauth_login(
     
     from .oauth import get_oauth_service
     oauth = get_oauth_service()
+
+    # Return to the app where sign-in started, even with a tunneled callback.
+    if not redirect_to.startswith("/") or redirect_to.startswith("//"):
+        return JSONResponse(status_code=400, content={"error": "invalid_redirect"})
+    redirect_to = str(request.base_url).rstrip("/") + redirect_to
     
     # Get authorization URL
     auth_url, state = oauth.get_authorization_url(user_id)
@@ -249,14 +257,15 @@ async def oauth_status(
     from .oauth import get_oauth_service
     oauth = get_oauth_service()
     
-    token = oauth.token_store.get(user_id)
+    access_token = await oauth.get_valid_token(user_id)
+    token = oauth.token_store.get(user_id) if access_token else None
     
     if token is None:
         return JSONResponse({
             "oauth_configured": True,
             "authenticated": False,
             "mode": "oauth",
-            "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}",
+            "login_url": "/oauth/login",
             "message": "Not authenticated. Please log in.",
         })
     
@@ -350,26 +359,37 @@ async def chatkit_endpoint(request: Request) -> Response:
     return JSONResponse(result)
 
 
+@app.get("/api/decks")
+async def get_deck_library() -> JSONResponse:
+    """Browse saved decks without requiring a chat message."""
+    from .tools.deck_list import fetch_user_decks
+    result = await fetch_user_decks()
+    status = 401 if result.get("error") in ("not_authenticated", "token_expired") else 502 if result.get("error") else 200
+    return JSONResponse(result, status_code=status)
+
+
 @app.get("/api/deck-state/{thread_id}")
 async def get_deck_state(thread_id: str) -> JSONResponse:
     """Get the active deck state for a thread, including deck contents if loaded."""
-    from .tools import fetch_deck_contents
-    
-    logger.info(f"🔍 Fetching deck state for thread: {thread_id}")
-    
-    state = chatkit_server.deck_manager.to_dict(thread_id)
-    deck_id = state.get("active_deck_id")
-    
-    # If there's an active deck but no contents loaded, fetch them
-    if deck_id and not state.get("deck_contents"):
-        logger.info(f"📦 Loading deck contents for deck {deck_id}")
-        contents = await fetch_deck_contents(deck_id)
-        state["deck_contents"] = contents
-        # Store in manager for caching
-        deck_state = chatkit_server.deck_manager.get_state(thread_id)
-        deck_state.deck_contents = contents
-    
-    return JSONResponse(state)
+    from .drafts import ensure_draft
+    manager=chatkit_server.deck_manager
+    try:
+        if manager.get_state(thread_id).active_deck_id:
+            await ensure_draft(manager,thread_id)
+        return JSONResponse(manager.to_dict(thread_id))
+    except ValueError as exc:
+        return JSONResponse({"error":str(exc)},status_code=400)
+
+
+@app.post("/api/draft/{thread_id}/{action}")
+async def draft_action(thread_id: str, action: str, request: Request):
+    from .drafts import act
+    try:
+        payload=await request.json()
+        await act(chatkit_server.deck_manager,thread_id,action,payload.get("proposal_id"))
+        return JSONResponse(chatkit_server.deck_manager.to_dict(thread_id))
+    except ValueError as exc:
+        return JSONResponse({"error":str(exc)},status_code=409)
 
 
 @app.get("/api/deck/{deck_id}")
@@ -381,6 +401,112 @@ async def get_deck_contents(deck_id: int) -> JSONResponse:
     contents = await fetch_deck_contents(deck_id)
     
     return JSONResponse(contents)
+
+
+@app.get("/api/conversations")
+async def conversations():
+    threads=await chatkit_server.store.load_threads(100,None,"desc",{})
+    return JSONResponse([{"id":t.id,"title":t.title or "Deck conversation"} for t in threads.data])
+
+
+@app.get("/api/models")
+def list_models():
+    """Model picker data without needing a thread. Sync so it stays dependency-free."""
+    from .models import model_for, available_models
+    return JSONResponse({"active": model_for(None), "models": available_models()})
+
+
+@app.get("/api/conversations/{thread_id}")
+async def conversation(thread_id:str):
+    items=await chatkit_server.store.load_thread_items(thread_id,None,100,"desc",{})
+    return JSONResponse([i.model_dump(mode="json") for i in reversed(items.data)])
+
+
+@app.post("/api/workspace/select")
+async def select_workspace_deck(request:Request):
+    from uuid import uuid4
+    from datetime import datetime,timezone
+    from chatkit.types import ThreadMetadata
+    from .drafts import ensure_draft
+    from .tools.deck_list import fetch_user_decks
+    payload=await request.json()
+    library=await fetch_user_decks()
+    if library.get("error"):return JSONResponse({"error":"Reconnect SWUStats to choose a deck."},status_code=401)
+    deck=next((d for d in library["decks"] if d["id"]==payload.get("deck_id")),None)
+    if not deck:return JSONResponse({"error":"Choose a deck from your library."},status_code=400)
+    thread_id=payload.get("thread_id") or "thr_"+uuid4().hex
+    if thread_id not in chatkit_server.store.threads:
+        await chatkit_server.store.save_thread(ThreadMetadata(id=thread_id,created_at=datetime.now(timezone.utc),title=deck.get("name") or "Deck conversation"),{})
+    chatkit_server.deck_manager.set_active_deck(thread_id,deck["id"],deck.get("name") or "Untitled deck")
+    try:
+        await ensure_draft(chatkit_server.deck_manager,thread_id)
+    except ValueError as exc:return JSONResponse({"error":str(exc)},status_code=400)
+    return JSONResponse({"thread_id":thread_id})
+
+
+from .discovery import DiscoveryRequest, discover, create_draft
+from pydantic import BaseModel, Field
+from typing import Literal
+
+@app.get("/api/discovery/{thread_id}")
+async def discovery_context(thread_id: str):
+    return chatkit_server.deck_manager.discovery.get(thread_id,{"needs_format":True,"request":DiscoveryRequest().model_dump()})
+
+@app.post("/api/discovery")
+async def leader_discovery(payload: DiscoveryRequest, thread_id: str | None = None):
+    try:
+        result=await discover(payload)
+        if thread_id:
+            chatkit_server.deck_manager.discovery[thread_id]={"request":payload.model_dump(),"needs_format":False}
+            chatkit_server.deck_manager.save()
+        return result
+    except ValueError as exc:return JSONResponse({"error":str(exc)},status_code=503)
+
+class NewLeaderDraft(BaseModel):
+    leader_id: str = Field(max_length=50)
+    base_id: str = Field(max_length=50)
+    preferences: DiscoveryRequest
+
+@app.post("/api/workspace/new-draft")
+async def new_leader_draft(payload: NewLeaderDraft):
+    from uuid import uuid4
+    from datetime import datetime,timezone
+    from chatkit.types import ThreadMetadata
+    thread_id="thr_"+uuid4().hex
+    try:
+        state=await create_draft(chatkit_server.deck_manager,thread_id,payload.leader_id,payload.base_id,payload.preferences)
+    except ValueError as exc:return JSONResponse({"error":str(exc)},status_code=400)
+    await chatkit_server.store.save_thread(ThreadMetadata(id=thread_id,created_at=datetime.now(timezone.utc),title=state.active_deck_name),{})
+    return {"thread_id":thread_id}
+
+class RemoveCardRequest(BaseModel):
+    deck_id: int
+    revision: int = Field(ge=0)
+    card_id: str = Field(min_length=1,max_length=50)
+    section: Literal["deck","sideboard"]
+    all_copies: bool = False
+
+@app.post("/api/workspace/{thread_id}/remove")
+async def remove_workspace_card(thread_id: str, payload: RemoveCardRequest):
+    from .drafts import remove_card
+    try:
+        state=await remove_card(chatkit_server.deck_manager,thread_id,payload.deck_id,payload.revision,payload.card_id,payload.section,payload.all_copies)
+        return state.to_dict()
+    except ValueError as exc:return JSONResponse({"error":str(exc)},status_code=409)
+
+class AddCardRequest(BaseModel):
+    deck_id: int = Field(gt=0)
+    revision: int = Field(ge=0)
+    card_id: str = Field(min_length=1,max_length=50)
+    section: Literal["deck","sideboard"]
+
+@app.post("/api/workspace/{thread_id}/add")
+async def add_workspace_card(thread_id: str, payload: AddCardRequest):
+    from .drafts import add_card
+    try:
+        state=await add_card(chatkit_server.deck_manager,thread_id,payload.deck_id,payload.revision,payload.card_id,payload.section)
+        return state.to_dict()
+    except ValueError as exc:return JSONResponse({"error":str(exc)},status_code=409)
 
 
 # Serve the built frontend

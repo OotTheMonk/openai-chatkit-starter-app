@@ -23,7 +23,7 @@ def build_deck_list_widget(
 ) -> WidgetRoot:
     """Render a deck list widget using the .widget template."""
     payload = {
-        "decks": [_serialize_deck(deck, active_deck_id) for deck in decks],
+        "decks": [_serialize_deck(deck, active_deck_id) for deck in decks[:3]],
         "count": count,
         "active_deck_id": active_deck_id,
         "active_deck_name": active_deck_name

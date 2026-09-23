@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "name": "card_search_results",
-  "template": "{\"type\":\"ListView\",\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Card Search Results\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((\"Search: \" ~ query ~ \" (\" ~ (count | string) ~ \" found)\")) | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- for card in cards -%},{\"type\":\"ListViewItem\",\"key\":{{ (loop.index | string) | tojson }},\"children\":[{\"type\":\"Box\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"gray-800\",\"size\":1}},\"children\":[{\"type\":\"Text\",\"value\":{{ (card.ability) | tojson }},\"size\":\"sm\",\"weight\":\"medium\"}]}]}{%- endfor -%}]}",
+  "template": "{\"type\":\"ListView\",\"limit\":7,\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"width\":\"100%\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Card matches\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((\"Search: \" ~ query ~ \" (\" ~ (count | string) ~ \" found)\")) | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]},{\"type\":\"ListViewItem\",\"key\":\"cards\",\"children\":[{\"type\":\"CardGrid\",\"children\":[{% for card in cards %}{% if card.id %}{\"type\":\"CardImage\",\"key\":{{ (loop.index | string) | tojson }},\"id\":{{ card.id | tojson }},\"name\":{{ card.name | tojson }}{% if card.image %},\"image\":{{ card.image | tojson }}{% endif %}}{% else %}{\"type\":\"Text\",\"value\":{{ card.name | tojson }},\"size\":\"sm\"}{% endif %}{{ \",\" if not loop.last }}{% endfor %}]}]}]}",
   "jsonSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -19,17 +19,29 @@
         "items": {
           "type": "object",
           "properties": {
-            "ability": {
+            "name": {
               "type": "string",
               "minLength": 1
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "image": {
+              "type": ["string", "null"]
             }
           },
-          "required": ["ability"],
+          "required": [
+            "name"
+          ],
           "additionalProperties": false
         }
       }
     },
-    "required": ["query", "count", "cards"],
+    "required": [
+      "query",
+      "count",
+      "cards"
+    ],
     "additionalProperties": false
   }
 }

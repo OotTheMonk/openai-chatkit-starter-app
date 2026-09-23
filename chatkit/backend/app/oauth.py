@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 import json
 import os
-import httpx
+from .swu import httpx, swu_client
 from urllib.parse import urlencode
 
 logging.basicConfig(level=logging.INFO)
@@ -238,7 +238,7 @@ class OAuthService:
                 user_id = metadata.get("user_id", user_id)
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with swu_client() as client:
                 resp = await client.post(
                     self.config.token_url,
                     data={
@@ -252,7 +252,6 @@ class OAuthService:
                 )
                 
                 logger.info(f"📥 Token exchange response status: {resp.status_code}")
-                logger.info(f"📥 Token exchange response: {resp.text[:500]}")
                 
                 resp.raise_for_status()
                 data = resp.json()
@@ -277,7 +276,7 @@ class OAuthService:
                 return token
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ Token exchange failed: {e.response.status_code} - {e.response.text}")
+            logger.error("Token exchange failed: HTTP %s", e.response.status_code)
             return None
         except Exception as e:
             logger.error(f"❌ Token exchange error: {e}", exc_info=True)
@@ -299,7 +298,7 @@ class OAuthService:
             return None
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with swu_client() as client:
                 resp = await client.post(
                     self.config.token_url,
                     data={
@@ -336,9 +335,10 @@ class OAuthService:
                 return token
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ Token refresh failed: {e.response.status_code} - {e.response.text}")
-            # If refresh fails, delete the invalid tokens
-            self.token_store.delete(user_id)
+            logger.error("Token refresh failed: HTTP %s", e.response.status_code)
+            # A temporary provider failure must not discard refresh credentials.
+            if e.response.status_code in (400, 401):
+                self.token_store.delete(user_id)
             return None
         except Exception as e:
             logger.error(f"❌ Token refresh error: {e}", exc_info=True)
@@ -386,11 +386,11 @@ class OAuthService:
             return None
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with swu_client() as client:
                 resp = await client.get(
                     self.config.userinfo_url,
                     params={"access_token": access_token},
-                    timeout=10.0,
+                    timeout=30.0,
                 )
                 resp.raise_for_status()
                 return resp.json()

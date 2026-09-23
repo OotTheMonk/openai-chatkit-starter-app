@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "name": "proposal_review",
+  "template": "{\"type\":\"ListView\",\"limit\":60,\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Box\",\"width\":\"100%\",\"padding\":{\"x\":3,\"y\":2},\"children\":[{\"type\":\"Col\",\"gap\":1,\"children\":[{\"type\":\"Text\",\"value\":\"Proposed changes\",\"size\":\"lg\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ ((goal ~ \" (\" ~ (count | string) ~ \" changes)\")) | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- for c in changes -%},{\"type\":\"ListViewItem\",\"key\":{{ (loop.index | string) | tojson }},\"children\":[{\"type\":\"Box\",\"width\":\"100%\",\"padding\":{\"x\":3,\"y\":2},\"border\":{\"top\":{\"color\":\"#e2e7dc\",\"size\":1}},\"children\":[{\"type\":\"Col\",\"gap\":0,\"children\":[{\"type\":\"Text\",\"value\":{{ c.title | tojson }},\"size\":\"sm\",\"weight\":\"bold\"},{\"type\":\"Text\",\"value\":{{ c.reason | tojson }},\"size\":\"sm\",\"color\":\"tertiary\"}]}]}]}{%- endfor -%},{\"type\":\"ListViewItem\",\"key\":\"apply\",\"children\":[{{ apply_button | tojson }}]},{\"type\":\"ListViewItem\",\"key\":\"dismiss\",\"children\":[{{ dismiss_button | tojson }}]}]}",
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "goal": {
+        "type": "string",
+        "minLength": 1
+      },
+      "apply_label": {
+        "type": "string",
+        "minLength": 1
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "apply_button": {
+        "type": "object"
+      },
+      "dismiss_button": {
+        "type": "object"
+      },
+      "changes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "title",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "goal",
+      "apply_label",
+      "count",
+      "changes",
+      "apply_button",
+      "dismiss_button"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
+# httpx is re-exported from ..swu so tests can patch httpx.AsyncClient here.
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
 
 from ..config import get_access_token, SWUSTATS_API_BASE, SERVER_BASE_URL
+from ..swu import httpx, SWU_HEADERS, track_request, describe_deck_contents
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -43,14 +43,14 @@ async def fetch_deck_contents(deck_id: int, user_id: str = "default") -> dict[st
                 "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
             }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0, headers=SWU_HEADERS) as client:
             resp = await client.get(
                 f"{SWUSTATS_API_BASE}/LoadDeck.php",
                 params={
                     "access_token": access_token,
                     "deckID": deck_id
                 },
-                timeout=10.0
+                timeout=30.0
             )
             resp.raise_for_status()
             data = resp.json()
@@ -120,8 +120,8 @@ async def load_deck_contents_tool(
         logger.info(f"📦 LOAD_DECK_CONTENTS TOOL CALLED with deck_id={deck_id}")
         
         # If no deck_id provided, try to use the active deck
+        deck_manager = ctx.context.request_context.get("deck_manager")
         if deck_id is None:
-            deck_manager = ctx.context.request_context.get("deck_manager")
             if deck_manager:
                 thread_id = ctx.context.thread.id
                 active_id, active_name = deck_manager.get_active_deck(thread_id)
@@ -133,7 +133,19 @@ async def load_deck_contents_tool(
             else:
                 return "❌ No deck_id provided and no active deck available."
         
-        result = await fetch_deck_contents(deck_id)
+        state = deck_manager.get_state(ctx.context.thread.id) if deck_manager else None
+        if state and state.active_deck_id == deck_id and state.deck_contents and not state.deck_contents.get("error"):
+            result = state.deck_contents
+        else:
+            result = await track_request(ctx.context, f"Loading deck {deck_id} from SWUStats", lambda: fetch_deck_contents(deck_id), describe_deck_contents)
+
+        if result.get("error") in ("not_authenticated", "token_expired"):
+            request = ctx.context.request_context.get("request")
+            base_url = str(request.base_url).rstrip("/") if request else SERVER_BASE_URL
+            return (
+                "Connect your SWUStats account to load this deck: "
+                f"[Connect SWUStats]({base_url}/oauth/login). Then try again."
+            )
         
         if result["error"]:
             return f"❌ {result['error']}"
@@ -143,7 +155,9 @@ async def load_deck_contents_tool(
         if deck_manager:
             thread_id = ctx.context.thread.id
             state = deck_manager.get_state(thread_id)
-            state.deck_contents = result
+            if state.active_deck_id == deck_id:
+                state.deck_contents = result
+                deck_manager.save()
             logger.info(f"📦 Stored deck contents in state for thread {thread_id}")
         
         # Build a summary
@@ -157,10 +171,8 @@ async def load_deck_contents_tool(
             f"- Sideboard: {sideboard_count} cards ({len(result['sideboard'])} unique)",
         ]
         
-        if result["leader"]:
-            summary_parts.append(f"- Leader ID: {result['leader'].get('id', 'Unknown')}")
-        if result["base"]:
-            summary_parts.append(f"- Base ID: {result['base'].get('id', 'Unknown')}")
+        if result["leader"] or result["base"]:
+            summary_parts.append("- Leader, base, and cards are visible in the deck inspector.")
         
         return "\n".join(summary_parts)
         

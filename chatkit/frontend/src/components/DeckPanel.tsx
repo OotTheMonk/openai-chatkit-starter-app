@@ -1,278 +1,36 @@
-import { useState, useEffect, useCallback } from "react";
-import { CHATKIT_API_URL } from "../lib/config";
-
-interface DeckCard {
-  id: string;
-  count: number;
-  name?: string;
+import { useState, useEffect, useRef } from "react";
+import { Icon } from "./Icon";
+import { type DeckCard, type Draft, swuCardImage } from "../lib/deck";
+function CardImage({card,full=false}:{card:DeckCard;full?:boolean}) {
+ const [failed,setFailed]=useState(false);
+ return failed?<span className="image-fallback">{card.name||card.id}</span>:<img src={swuCardImage(card.id,full)} alt={card.name||"Card "+card.id} loading="lazy" onError={()=>setFailed(true)}/>;
 }
-
-interface DeckContents {
-  deck_id: number;
-  metadata: {
-    name?: string;
-    description?: string;
-    format?: string;
-  };
-  leader?: { id: string; name?: string };
-  base?: { id: string; name?: string };
-  deck: DeckCard[];
-  sideboard: DeckCard[];
-  error?: string | null;
-}
-
-interface DeckState {
-  active_deck_id: number | null;
-  active_deck_name: string | null;
-  deck_contents: DeckContents | null;
-}
-
-interface DeckPanelProps {
-  threadId: string | null;
-  activeDeckId: number | null;
-}
-
-// Helper to get card image URL
-const getCardImageUrl = (cardId: string, type: 'square' | 'full' = 'square') => {
-  const baseUrl = type === 'square' 
-    ? 'https://www.swustats.net/TCGEngine/SWUDeck/concat/'
-    : 'https://www.swustats.net/TCGEngine/SWUDeck/WebpImages/';
-  return `${baseUrl}${cardId}.webp`;
-};
-
-export function DeckPanel({ threadId, activeDeckId }: DeckPanelProps) {
-  const [deckState, setDeckState] = useState<DeckState | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copiedDeckId, setCopiedDeckId] = useState(false);
-
-  const fetchDeckContents = useCallback(async (deckId: number) => {
-    console.log("🔍 fetchDeckContents called with deckId:", deckId);
-    const apiUrl = `${CHATKIT_API_URL.replace('/chatkit', '')}/api/deck/${deckId}`;
-    console.log("🔍 Fetching from:", apiUrl);
-
-    try {
-      setLoading(true);
-      const response = await fetch(apiUrl);
-      console.log("🔍 Response status:", response.status);
-      console.log("🔍 Response headers:", {
-        contentType: response.headers.get('content-type'),
-      });
-      
-      // Log the raw response text to help debug
-      const responseText = await response.text();
-      console.log("🔍 Response text (first 500 chars):", responseText.substring(0, 500));
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch deck: ${response.status}`);
-      }
-      
-      // Parse the JSON
-      try {
-        const contents = JSON.parse(responseText) as DeckContents;
-        console.log("📦 DeckPanel received deck contents:", contents);
-        
-        // Set the deck state with the fetched contents
-        setDeckState({
-          active_deck_id: deckId,
-          active_deck_name: contents.metadata?.name || `Deck ${deckId}`,
-          deck_contents: contents,
-        });
-        setError(null);
-      } catch (parseErr) {
-        console.error("Error parsing JSON response:", parseErr);
-        throw new Error(`Invalid JSON response: ${parseErr instanceof Error ? parseErr.message : 'Unknown error'}`);
-      }
-    } catch (err) {
-      console.error("Error fetching deck contents:", err);
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch when activeDeckId changes
-  useEffect(() => {
-    console.log("🔄 DeckPanel useEffect triggered - activeDeckId:", activeDeckId);
-    if (activeDeckId) {
-      void fetchDeckContents(activeDeckId);
-    } else {
-      setDeckState(null);
-    }
-  }, [activeDeckId, fetchDeckContents]);
-
-  if (loading && !deckState) {
-    return (
-      <div className="p-4 text-sm text-gray-500">
-        Loading deck state...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 text-sm text-red-500">
-        Error: {error}
-      </div>
-    );
-  }
-
-  if (!deckState?.active_deck_id) {
-    return (
-      <div className="p-4">
-        <h3 className="text-lg font-semibold mb-2 text-white">Active Deck</h3>
-        <p className="text-sm text-gray-500">No deck selected</p>
-        <p className="text-xs text-gray-400 mt-2">
-          Say "show my decks" to select a deck
-        </p>
-      </div>
-    );
-  }
-
-  console.log("🎨 Rendering deck with state:", deckState);
-  const contents = deckState.deck_contents;
-  console.log("🎨 Contents:", contents);
-  const mainDeckCount = contents?.deck?.reduce((sum, card) => sum + card.count, 0) ?? 0;
-  const sideboardCount = contents?.sideboard?.reduce((sum, card) => sum + card.count, 0) ?? 0;
-
-  const copyDeckId = () => {
-    if (deckState?.active_deck_id) {
-      navigator.clipboard.writeText(deckState.active_deck_id.toString());
-      setCopiedDeckId(true);
-      setTimeout(() => setCopiedDeckId(false), 2000);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 p-4 border-b border-slate-700">
-        <h3 className="text-lg font-semibold text-white">Active Deck</h3>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 mb-4 shadow-lg">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-white text-lg">{deckState.active_deck_name}</h4>
-            <button
-              onClick={copyDeckId}
-              className="group relative p-2 hover:bg-slate-700 rounded transition-colors"
-              title="Deck ID"
-            >
-              <svg className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-slate-700 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                {copiedDeckId ? 'Copied!' : `ID: ${deckState.active_deck_id}`}
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {contents && !contents.error && (
-          <div className="space-y-6">
-            {/* Leader & Base */}
-            {(contents.leader || contents.base) && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">Identity</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  {contents.leader && (
-                    <div className="relative group cursor-pointer">
-                      <img 
-                        src={getCardImageUrl(contents.leader.id, 'square')} 
-                        alt={contents.leader.name || contents.leader.id}
-                        className="w-full rounded-lg shadow-lg transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-blue-500/50 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                        <span className="text-xs text-white font-medium">Leader</span>
-                      </div>
-                    </div>
-                  )}
-                  {contents.base && (
-                    <div className="relative group cursor-pointer">
-                      <img 
-                        src={getCardImageUrl(contents.base.id, 'square')} 
-                        alt={contents.base.name || contents.base.id}
-                        className="w-full rounded-lg shadow-lg transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-blue-500/50 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                        <span className="text-xs text-white font-medium">Base</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Main Deck */}
-            {contents.deck.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">
-                  Main Deck <span className="text-gray-500">({mainDeckCount})</span>
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {contents.deck.map((card, idx) => (
-                    <div
-                      key={`${card.id}-${idx}`}
-                      className="relative group cursor-pointer"
-                    >
-                      <img 
-                        src={getCardImageUrl(card.id, 'square')} 
-                        alt={card.name || card.id}
-                        className="w-full rounded-lg shadow-md transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-amber-500/50 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                      {card.count > 1 && (
-                        <div className="absolute top-1 right-1 bg-gradient-to-br from-amber-500 to-orange-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-white">
-                          {card.count}
-                        </div>
-                      )}
-                      <div className="absolute inset-0 rounded-lg ring-2 ring-transparent group-hover:ring-amber-500/50 transition-all pointer-events-none"></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Sideboard */}
-            {contents.sideboard.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">
-                  Sideboard <span className="text-gray-500">({sideboardCount})</span>
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {contents.sideboard.map((card, idx) => (
-                    <div
-                      key={`${card.id}-${idx}`}
-                      className="relative group cursor-pointer"
-                    >
-                      <img 
-                        src={getCardImageUrl(card.id, 'square')} 
-                        alt={card.name || card.id}
-                        className="w-full rounded-lg shadow-md transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-purple-500/50 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                      {card.count > 1 && (
-                        <div className="absolute top-1 right-1 bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-white">
-                          {card.count}
-                        </div>
-                      )}
-                      <div className="absolute inset-0 rounded-lg ring-2 ring-transparent group-hover:ring-purple-500/50 transition-all pointer-events-none"></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {contents?.error && (
-          <div className="text-sm text-red-400 mt-4">
-            {contents.error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+export function DeckPanel({draft,loading,busy,onBrowse,onRemove,onRemoveAll,onAdd}:{onRemove:(id:string,section:"deck"|"sideboard",allCopies:boolean)=>void;onRemoveAll:(ids:string[],section:"deck"|"sideboard")=>void;onAdd:(id:string,section:"deck"|"sideboard")=>void;draft:Draft|null;loading:boolean;busy:boolean;onBrowse:()=>void}) {
+ const [preview,setPreview]=useState<DeckCard|null>(null),[tab,setTab]=useState<"deck"|"sideboard">("deck");
+ const [costFilter,setCostFilter]=useState<number|null>(null);
+ useEffect(()=>{setCostFilter(null);setPreview(null);},[draft?.active_deck_id]);
+ const dialog=useRef<HTMLDialogElement>(null);
+ useEffect(()=>{if(preview)dialog.current?.showModal();else dialog.current?.close();},[preview]);
+ const deck=draft?.deck_contents;
+ if(loading)return <div className="inspector-content" role="status"><div className="deck-skeleton"/><p>Loading your working deck…</p></div>;
+ if(!deck)return <div className="inspector-empty"><Icon name="cards" size={40}/><h2>Choose your starting point.</h2><p>Open a saved deck, set a goal, and review the assistant’s suggested changes here.</p><button className="primary-button" onClick={onBrowse}>Browse decks</button></div>;
+ const main=deck.deck.reduce((n,c)=>n+c.count,0),side=deck.sideboard.reduce((n,c)=>n+c.count,0);
+ const known=deck[tab].filter(c=>c.cost!=null).reduce((n,c)=>n+c.count,0);
+ const curve=Array.from({length:8},(_,i)=>deck[tab].filter(c=>c.cost!=null&&(i===7?c.cost>=7:c.cost===i)).reduce((n,c)=>n+c.count,0));
+ const max=Math.max(...curve,1);
+ const mergedRows:{key:string;card:DeckCard;ids:string[];count:number}[]=[];deck[tab].forEach(c=>{const key=c.name||c.id;const at=mergedRows.findIndex(m=>m.key===key);if(at>=0)mergedRows[at]={...mergedRows[at],count:mergedRows[at].count+c.count,ids:[...mergedRows[at].ids,c.id]};else mergedRows.push({key,card:c,ids:[c.id],count:c.count});});
+ const visibleCards=mergedRows.filter(m=>costFilter===null||(m.card.cost!=null&&(costFilter===7?m.card.cost>=7:m.card.cost===costFilter)));
+ const types=Object.entries(deck[tab].reduce<Record<string,number>>((all,c)=>{const key=c.type||"Unknown";all[key]=(all[key]||0)+c.count;return all;},{}));
+ const copies=Object.values([...deck.deck,...deck.sideboard].reduce<Record<string,number>>((a,c)=>{const k=c.name||c.id;a[k]=(a[k]||0)+c.count;return a;},{})).some(n=>n>3);
+ const checks=[!deck.leader&&"Missing leader",!deck.base&&"Missing base",main<50&&"Under 50 main-deck cards",side>10&&"Over 10 sideboard cards",copies&&"Check cards with more than 3 copies"].filter(Boolean);
+ return <div className="inspector-content">
+  <div className="deck-title-row"><div className="deck-title-copy"><h2 className="deck-title">{draft?.active_deck_name||deck.metadata.name}</h2><div className="deck-summary-line"><strong>{main}</strong> main deck <span>·</span><strong>{side}</strong> sideboard</div></div><div className={"deck-validation "+(checks.length?"is-invalid":"is-valid")} tabIndex={0} role="img" aria-label={checks.length?`Deck checks: ${checks.join("; ")}`:"Basic deck checks passed"}><Icon name={checks.length?"warning":"check"} size={18}/><div className="deck-validation-tooltip" role="tooltip"><strong>{checks.length?"Check before play":"Basic checks passed"}</strong>{checks.length?<ul>{checks.map(check=><li key={String(check)}>{check}</li>)}</ul>:<p>Leader, base, main deck and sideboard counts checked.</p>}<small>Premier baseline only. Format, bans, special card rules and aspect penalties are not verified.</small></div></div></div>
+  <div className="identity-grid">{[{card:deck.leader,label:"Leader"},{card:deck.base,label:"Base"}].map(({card,label})=>card&&<button key={card.id} className="identity-card" aria-label={"Inspect "+(card.name||label)} onClick={()=>setPreview(card)}><CardImage card={card} full/></button>)}</div>
+  <details className="deck-analysis" open><summary>Resources & card types</summary><div className="curve" aria-label="Printed resource cost distribution">{curve.map((n,i)=><button type="button" key={i} aria-pressed={costFilter===i} onClick={()=>setCostFilter(costFilter===i?null:i)} aria-label={"Filter "+(i===7?"7+":i)+" cost: "+n+" cards"}><span>{n}</span><i style={{height:(n/max*48)+"px"}}/><small>{i===7?"7+":i}</small></button>)}</div><p className="type-distribution">{types.map(([type,n])=><span key={type}>{type} <strong>{n}</strong></span>)}</p>{known<(tab==="deck"?main:side)&&<p className="muted">{(tab==="deck"?main:side)-known} cards have unknown costs.</p>}</details>
+  {draft?.proposal&&<p className="muted" role="status">A proposal is waiting for review in the conversation.</p>}
+  <div className="deck-tabs" role="tablist" aria-label="Deck section">{(["deck","sideboard"] as const).map(t=><button role="tab" aria-selected={tab===t} key={t} onClick={()=>setTab(t)}>{t==="deck"?"Main deck":"Sideboard"} <span>{t==="deck"?main:side}</span></button>)}</div>
+  {costFilter!==null&&<div className="cost-filter-status" role="status">Showing {costFilter===7?"7+":costFilter}-cost cards<button className="text-button" onClick={()=>setCostFilter(null)}>Clear cost filter</button></div>}
+  <section className="draft-card-list" aria-label={tab==="deck"?"Main deck cards":"Sideboard cards"}>{visibleCards.map(m=><div key={m.key} className="editable-card-row"><button className="draft-card-row" onClick={()=>setPreview(m.card)} aria-label={"Inspect "+(m.card.name||m.key)+", "+m.count+" copies"}><span className="row-count">{m.count}×</span><span className="row-card-image"><CardImage card={m.card}/></span><span className="row-card-name"><strong>{m.card.name||m.key}</strong><small>{m.card.type||"Card details unavailable"}</small></span></button><div className="card-removal"><button disabled={busy} aria-label={"Add one copy of "+(m.card.name||m.key)} title="Add one copy" onMouseDown={e=>e.preventDefault()} onClick={()=>onAdd(m.ids[0],tab)}>+1</button><button disabled={busy} aria-label={"Remove one copy of "+(m.card.name||m.key)} title="Remove one copy" onMouseDown={e=>e.preventDefault()} onClick={()=>onRemove(m.ids[0],tab,false)}>−1</button><button disabled={busy} aria-label={"Remove all copies of "+(m.card.name||m.key)} title="Remove all copies" onMouseDown={e=>e.preventDefault()} onClick={()=>m.ids.length>1?onRemoveAll(m.ids,tab):onRemove(m.ids[0],tab,true)}>Remove</button></div></div>)}{!visibleCards.length&&<p className="muted">{costFilter===null?"No cards in this section.":"No cards at this cost in this section."}</p>}</section>
+  <dialog className="card-dialog" ref={dialog} onCancel={()=>setPreview(null)} onClick={e=>{if(e.target===e.currentTarget)setPreview(null);}} aria-label="Card preview"><button autoFocus className="icon-button" aria-label="Close card preview" onClick={()=>setPreview(null)}><Icon name="close"/></button>{preview&&<><CardImage key={preview.id} card={preview} full/><p>{preview.name||preview.id}</p></>}</dialog>
+ </div>;
 }

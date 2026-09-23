@@ -23,7 +23,9 @@ def build_card_search_widget(query: str, cards: list[dict[str, Any]], count: int
 
 
 def _serialize_card(card: dict[str, Any]) -> dict[str, Any]:
-    """Serialize card data for the widget."""
+    """Serialize card data for the widget: names plus art keys, never rules text."""
     return {
-        "ability": card.get("name", "Unknown")
+        "name": card.get("name") or "Unknown",
+        "id": card.get("id") or None,
+        "image": card.get("image") or None,
     }

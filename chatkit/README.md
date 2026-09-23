@@ -37,11 +37,11 @@ What happens:
 
 - `OPENAI_API_KEY` (backend)
 - `VITE_CHATKIT_API_URL` (optional, defaults to `/chatkit`)
-- `VITE_CHATKIT_API_DOMAIN_KEY` (optional, defaults to `domain_pk_localhost_dev`)
+
 
 Set `OPENAI_API_KEY` in your shell or in `.env.local` at the repo root before
-running the backend. Register a production domain key in the OpenAI dashboard
-and set `VITE_CHATKIT_API_DOMAIN_KEY` when deploying.
+running the backend.
+
 
 ## SWU Stats OAuth Setup
 

@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
+# httpx is re-exported from ..swu so tests can patch httpx.AsyncClient here.
 from agents import RunContextWrapper, function_tool
 from chatkit.agents import AgentContext
 from ..deck_list_widget import build_deck_list_widget
 from ..config import get_access_token, SWUSTATS_API_BASE, SERVER_BASE_URL
+from ..swu import httpx, SWU_HEADERS, track_request, describe_decks
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -38,11 +38,11 @@ async def fetch_user_decks(user_id: str = "default") -> dict[str, Any]:
                 "login_url": f"{SERVER_BASE_URL}/oauth/login?user_id={user_id}"
             }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0, headers=SWU_HEADERS) as client:
             resp = await client.get(
                 f"{SWUSTATS_API_BASE}/UserAPIs/GetUserDecks.php",
                 params={"access_token": access_token},
-                timeout=10.0
+                timeout=30.0
             )
             resp.raise_for_status()
             data = resp.json()
@@ -91,12 +91,14 @@ async def get_user_decks_tool(
     """
     try:
         logger.info("📋 GET_USER_DECKS TOOL CALLED")
-        result = await fetch_user_decks()
+        result = await track_request(ctx.context, "Loading saved decks from SWUStats", fetch_user_decks, describe_decks)
         logger.info(f"✅ Decks fetched: {result['count']} total")
         
         # Handle authentication errors with helpful message
         if result.get("error") in ("not_authenticated", "token_expired"):
-            login_url = result.get("login_url", f"{SERVER_BASE_URL}/oauth/login")
+            request = ctx.context.request_context.get("request")
+            base_url = str(request.base_url).rstrip("/") if request else SERVER_BASE_URL
+            login_url = f"{base_url}/oauth/login"
             return (
                 "🔒 **Authentication Required**\n\n"
                 "You need to connect your SWU Stats account to view your decks.\n\n"

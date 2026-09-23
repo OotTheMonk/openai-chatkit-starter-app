@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
-import httpx
+from .swu import swu_client
 import re
 
 
@@ -40,11 +40,11 @@ class CardSearchWidget:
         self.error = None
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with swu_client() as client:
                 resp = await client.post(
                     "http://142.11.210.6/es/swucardsearch.php",
                     data={"searchInput": search_input},
-                    timeout=10.0
+                    timeout=30.0
                 )
                 self.results = self._extract_results(resp.text)
                 if not self.results:

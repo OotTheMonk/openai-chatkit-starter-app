@@ -34,16 +34,9 @@ async def set_active_deck_tool(
     thread_id = ctx.context.thread.id
     result = deck_manager.set_active_deck(thread_id, deck_id, deck_name)
     
-    # Load the deck contents immediately
-    from .load_deck import fetch_deck_contents
-    logger.info(f"📦 Loading deck contents for deck {deck_id}")
-    contents = await fetch_deck_contents(deck_id)
-    
-    # Store the deck contents in the deck state
-    deck_state = deck_manager.get_state(thread_id)
-    deck_state.deck_contents = contents
-    logger.info(f"✅ Stored deck contents in state for thread {thread_id}")
-    
+    from ..drafts import ensure_draft
+    await ensure_draft(deck_manager,thread_id)
+
     # Emit a client effect to notify the frontend to refresh the deck panel
     logger.info(f"📤 Emitting deck_refresh effect for deck {deck_id}")
     await ctx.context.stream(

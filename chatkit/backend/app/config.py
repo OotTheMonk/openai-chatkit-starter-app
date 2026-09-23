@@ -22,6 +22,18 @@ SWUSTATS_API_BASE = os.getenv(
 )
 
 # =============================================================================
+# Card search endpoint (separate host)
+SWU_CARD_SEARCH_URL = os.getenv(
+    "SWU_CARD_SEARCH_URL",
+    "http://142.11.210.6/es/swucardsearch.php"
+)
+
+# Official OAuth semantic search (requires 'search' scope; Patreon subscribers)
+SWU_ELASTIC_SEARCH_URL = os.getenv(
+    "SWU_ELASTIC_SEARCH_URL",
+    "https://swustats.net/TCGEngine/AIEndpoints/FullElasticSearchOAuth.php"
+)
+
 # OAuth 2.0 Configuration
 # =============================================================================
 
@@ -35,7 +47,7 @@ OAUTH_TOKEN_URL = f"{SWUSTATS_API_BASE}/OAuth/token.php"
 OAUTH_USERINFO_URL = f"{SWUSTATS_API_BASE}/OAuth/userinfo.php"
 
 # OAuth scope (space-separated list of permissions)
-OAUTH_SCOPE = os.getenv("SWUSTATS_OAUTH_SCOPE", "openid profile decks")
+OAUTH_SCOPE = os.getenv("SWUSTATS_OAUTH_SCOPE", "openid profile decks editdecks search")
 
 # =============================================================================
 # Redirect URI Configuration
