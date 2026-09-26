@@ -1,10 +1,11 @@
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect, useMemo, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { CHATKIT_API_URL } from "../lib/config";
 import { swuCardImage } from "../lib/deck";
 import { Icon } from "./Icon";
 export interface ChatHandle { openThread:(id:string)=>Promise<void>; ask:(text:string)=>Promise<void>; newChat:()=>Promise<void>; history:()=>Promise<void>; selectDeck:(id:number,name:string,hasThread:boolean)=>Promise<void> }
 interface Action {type:string;payload?:Record<string,unknown>}
-interface Widget {type:string;value?:string;label?:string;children?:Widget[];onClickAction?:Action;id?:string;image?:string;name?:string}
+interface Widget {type:string;value?:string;label?:string;children?:Widget[];onClickAction?:Action;id?:string;image?:string;name?:string;color?:string;src?:string;alt?:string;background?:string}
 interface ToolTask {type?:string;title?:string|null;content?:string|null;status_indicator?:string}
 
 interface Item {id:string;type:string;content?:{text?:string}[];widget?:Widget;workflow?:{tasks?:ToolTask[]}}
@@ -21,6 +22,9 @@ function Text({text}:{text:string}) {
  })}</>;
 }
 function WidgetView({node,activeDeckId,act,disabled}:{node:Widget;activeDeckId:number|null;act:(a:Action)=>void;disabled:boolean}) {
+ if(node.type==="Badge"){return <span className={"stat-badge"+(node.color?" is-"+node.color:"")}>{node.label||""}</span>;}
+ if(node.type==="Image"&&typeof node.src==="string"&&node.src){return <StatImage src={node.src} full={node.id?swuCardImage(node.id,true):node.src} alt={typeof node.alt==="string"?node.alt:undefined}/>;}
+ if(node.type==="Box")return <div className="native-widget-box" style={{background:/^#[0-9a-fA-F]{6}$/.test(node.background||"")?node.background:undefined}}>{node.children?.map((n,i)=><WidgetView key={i} node={n} activeDeckId={activeDeckId} act={act} disabled={disabled}/>)}</div>;
  if(node.type==="CardImage"){
   const name=typeof node.name==="string"&&node.name?node.name:(node.label||"Card");
   const art=typeof node.id==="string"&&node.id?swuCardImage(node.id):(typeof node.image==="string"&&node.image?node.image:null);
@@ -40,6 +44,22 @@ function HoverThumb({name,image,full}:{name:string;image:string;full?:string}) {
  if(failed)return <span className="hover-chip">{name}</span>;
  const big=full||image;
  return <span className="hover-thumb"><img src={image} alt={name} title={name} loading="lazy" onError={()=>setFailed(true)}/><span className="hover-name">{name}</span>{fullOk&&<span className="hover-full"><img src={big} alt={name} loading="lazy" onError={()=>setFullOk(false)}/></span>}</span>;
+}
+function StatImage({src,full,alt}:{src:string;full:string;alt?:string}) {
+ const [failed,setFailed]=useState(false);
+ const [preview,setPreview]=useState<{left:number;top:number}|null>(null);
+ if(failed)return null;
+ const show=(target:HTMLElement)=>{
+  const rect=target.getBoundingClientRect(),width=Math.min(220,window.innerWidth-24),height=Math.min(320,window.innerHeight-24);
+  const right=rect.right+8,left=right+width+12<=window.innerWidth?right:Math.max(12,rect.left-width-8);
+  setPreview({left,top:Math.max(12,Math.min(rect.top,window.innerHeight-height-12))});
+ };
+ return <>
+  <button type="button" className="stat-image-button" aria-label={"Preview full card: "+(alt||"Card art")} onMouseEnter={e=>show(e.currentTarget)} onMouseLeave={()=>setPreview(null)} onFocus={e=>show(e.currentTarget)} onBlur={()=>setPreview(null)} onKeyDown={e=>{if(e.key==="Escape")setPreview(null);}}>
+   <img className="stat-thumb" src={src} alt={alt||"Card art"} loading="lazy" onError={()=>setFailed(true)}/>
+  </button>
+  {preview&&createPortal(<div className="stat-full-card" role="tooltip" style={preview}><img src={full} alt=""/></div>,document.body)}
+ </>;
 }
 const cardArt=(id:unknown)=>typeof id==="string"&&id?swuCardImage(id):null;
 const dedupeIds=(list:Item[])=>{const seen=new Map<string,number>();return list.map(it=>{const n=seen.get(it.id)??0;seen.set(it.id,n+1);return n?{...it,id:it.id+"#"+n}:it;});};
@@ -139,9 +159,10 @@ export const ChatKitPanel=forwardRef<ChatHandle,{onThreadChange:(id:string|null)
  const action=(a:Action)=>{if(a.type==="view_library"){onEffect({name:"view_library"});return;}if(a.type==="select_deck"){void selectDeck(Number(a.payload?.deck_id)).catch(()=>{});return;}if(current.current)void send("threads.custom_action",{thread_id:current.current,action:a}).catch(()=>{});};
  const submit=()=>{const text=input.trim();if(!text||busy)return;setInput("");void ask(text).catch(()=>setInput(text));};
  const renderItem=(item:Item,ix:number)=>{
-  if(item.type!=="user_message"&&item.type!=="workflow"&&!item.widget&&!(item.content||[]).some(c=>c.text&&c.text.trim()))return null;
+  const parts=Array.isArray(item.content)?item.content:[];
+  if(item.type!=="user_message"&&item.type!=="workflow"&&!item.widget&&!parts.some(c=>c&&c.text&&c.text.trim()))return null;
   if(item.type==="workflow"&&item.workflow&&(item.workflow.tasks||[]).length)return <ActivitySection key={item.id} id={item.id} tasks={item.workflow.tasks||[]} open={folded[item.id]??!items.slice(ix+1).some(later=>later.type==="assistant_message"||later.type==="widget"||later.type==="user_message")} onToggle={(id,expand)=>setFolded(f=>f[id]===expand?f:{...f,[id]:expand})}/>;
-  return ["user_message","assistant_message","widget"].includes(item.type)?<article key={item.id} className={"chat-message "+(item.type==="user_message"?"from-user":"from-assistant")} aria-label={item.type==="user_message"?"Your message":"Assistant response"}>{item.type!=="user_message"&&<span className="message-author">DECK ASSISTANT</span>}{item.content?.filter(c=>c.text&&c.text.trim()).map((c,i)=><p key={i}><Text text={c.text||""}/></p>)}{item.widget&&<WidgetView node={item.widget} activeDeckId={activeDeckId} act={action} disabled={busy}/>}</article>:null;
+  return ["user_message","assistant_message","widget"].includes(item.type)?<article key={item.id} className={"chat-message "+(item.type==="user_message"?"from-user":"from-assistant")} aria-label={item.type==="user_message"?"Your message":"Assistant response"}>{item.type!=="user_message"&&<span className="message-author">DECK ASSISTANT</span>}{parts.filter(c=>c&&c.text&&c.text.trim()).map((c,i)=><p key={i}><Text text={c.text||""}/></p>)}{item.widget&&<WidgetView node={item.widget} activeDeckId={activeDeckId} act={action} disabled={busy}/>}</article>:null;
  };
  const renderGroups=()=>{
   const nodes:ReactNode[]=[];let i=0;
@@ -149,7 +170,7 @@ export const ChatKitPanel=forwardRef<ChatHandle,{onThreadChange:(id:string|null)
    const item=items[i];
    if(item.type==="workflow"&&item.workflow&&(item.workflow.tasks||[]).length){
     const run=[item.id],tasks=[...(item.workflow.tasks||[])];let j=i+1;
-    while(j<items.length&&items[j].type==="workflow"&&items[j].workflow&&(items[j].workflow.tasks||[]).length){run.push(items[j].id);tasks.push(...(items[j].workflow?.tasks||[]));j++;}
+     while(j<items.length){const next=items[j];if(next.type!=="workflow"||!next.workflow||!next.workflow.tasks?.length)break;run.push(next.id);tasks.push(...next.workflow.tasks);j++;}
     if(run.length>1)nodes.push(<ActivitySection key={run.join("+")} id={run[0]} tasks={tasks} open={folded[run[0]]??!items.slice(j).some(later=>later.type==="assistant_message"||later.type==="widget"||later.type==="user_message")} onToggle={(id,expand)=>setFolded(f=>f[id]===expand?f:{...f,[id]:expand})}/>);
     else nodes.push(renderItem(item,i));
     i=j;

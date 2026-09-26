@@ -147,6 +147,70 @@ class TrackRequestTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("id", result["cards"][1])
 
 
+class AttachSearchArtConsistencyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_known_id_fills_missing_image(self):
+        from app.server import attach_search_images
+
+        catalog = {"c9": {"id": "c9", "name": "Full Name — Subtitle", "image": "http://img/c9"}}
+        with patch("app.catalog.catalog", AsyncMock(return_value=catalog)):
+            result = await attach_search_images({"cards": [{"id": "c9", "name": "Short"}]})
+        self.assertEqual(result["cards"][0]["id"], "c9")
+        self.assertEqual(result["cards"][0]["image"], "http://img/c9")
+
+    async def test_unique_base_name_attaches_art_and_id(self):
+        from app.server import attach_search_images
+
+        catalog = {"c1": {"id": "c1", "name": "Moff Gideon — Ruthless Strategist", "image": "http://img/mg"}}
+        with patch("app.catalog.catalog", AsyncMock(return_value=catalog)):
+            result = await attach_search_images({"cards": [{"name": "Moff Gideon"}]})
+        self.assertEqual(result["cards"][0]["id"], "c1")
+        self.assertEqual(result["cards"][0]["image"], "http://img/mg")
+
+    async def test_ambiguous_base_name_attaches_nothing(self):
+        from app.server import attach_search_images
+
+        catalog = {
+            "c1": {"id": "c1", "name": "Unit X — Alpha", "image": "http://img/1"},
+            "c2": {"id": "c2", "name": "Unit X — Beta", "image": "http://img/2"},
+        }
+        with patch("app.catalog.catalog", AsyncMock(return_value=catalog)):
+            result = await attach_search_images({"cards": [{"name": "Unit X"}]})
+        self.assertNotIn("id", result["cards"][0])
+        self.assertNotIn("image", result["cards"][0])
+
+    async def test_existing_image_is_kept(self):
+        from app.server import attach_search_images
+
+        catalog = {"c1": {"id": "c1", "name": "Moff Gideon", "image": "http://img/new"}}
+        with patch("app.catalog.catalog", AsyncMock(return_value=catalog)):
+            result = await attach_search_images(
+                {"cards": [{"id": "c1", "name": "Moff Gideon", "image": "http://img/old"}]})
+        self.assertEqual(result["cards"][0]["image"], "http://img/old")
+
+    async def test_official_search_carries_image(self):
+        from app.server import search_official
+
+        response = SimpleNamespace(status_code=200, json=lambda: {"message": "specificCards=c9"})
+
+        class OfficialClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get(self, url, **kwargs):
+                return response
+
+        catalog = {"c9": {"id": "c9", "name": "Full — Sub", "text": "rules", "image": "http://img/c9"}}
+        with patch("app.server.get_access_token", AsyncMock(return_value="tok")), patch(
+            "app.server.swu_client", return_value=OfficialClient()
+        ), patch("app.catalog.catalog", AsyncMock(return_value=catalog)):
+            result = await search_official("whatever")
+        self.assertEqual(result["cards"][0]["id"], "c9")
+        self.assertEqual(result["cards"][0]["image"], "http://img/c9")
+
+
 class DescribeTests(unittest.TestCase):
     def test_error_results_stay_human_readable(self):
         self.assertTrue(describe_cards("q", {"error": "boom", "cards": [], "count": 0}).startswith(FAILED_PREFIX))

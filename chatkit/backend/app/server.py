@@ -128,23 +128,44 @@ class _CardListParser(HTMLParser):
 
 
 async def attach_search_images(result: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort card art for hover popups: match result names to catalog images.
+    """Best-effort card art/ids so every search row renders the art version.
 
-    Failures leave results imageless; the search itself never depends on art.
+    Lookup order per row: a known catalog id first, then the exact name,
+    then the base name with any " — Subtitle" suffix stripped. Base-name
+    matches only apply when a single catalog entry uses that base, so an
+    ambiguous short name never attaches the wrong art or id. Failures leave
+    results as they were; the search itself never depends on art.
     """
     try:
         from .catalog import catalog
         cards = await catalog()
         by_name: dict[str, Any] = {}
+        by_base: dict[str, Any] = {}
+        ambiguous: set[str] = set()
         for meta in cards.values():
             by_name.setdefault(str(meta.get("name", "")).casefold(), meta)
+            base = str(meta.get("name", "")).split(" — ")[0].casefold()
+            if base in by_base:
+                ambiguous.add(base)
+            by_base.setdefault(base, meta)
         for card in result.get("cards", []):
-            match = by_name.get(str(card.get("name", "")).casefold())
-            if not match:
+            if not isinstance(card, dict):
                 continue
-            if match.get("id"):
-                card["id"] = match["id"]
-            if match.get("image"):
+            known = cards.get(str(card.get("id"))) if card.get("id") else None
+            if known is not None:
+                match = known
+            else:
+                name = str(card.get("name", "")).casefold()
+                match = by_name.get(name)
+                if match is None:
+                    base = name.split(" — ")[0]
+                    if base not in ambiguous:
+                        match = by_base.get(base)
+                if match is None:
+                    continue
+                if match.get("id"):
+                    card["id"] = match["id"]
+            if match.get("image") and not card.get("image"):
                 card["image"] = match["image"]
     except Exception as exc:
         logger.warning(f"Card art lookup failed: {exc}")
@@ -174,7 +195,11 @@ def _official_ids(message: str) -> list[str]:
 
 
 def build_search_request(query,aspect=None,card_type=None,trait=None,arena=None,unique_only=False,min_cost=None,max_cost=None,min_power=None,max_power=None,min_hp=None,max_hp=None):
-    """Combine semantic text with discrete pre-filter tokens for the official search endpoint."""
+    """Combine semantic text with discrete pre-filter tokens for the official search endpoint.
+
+    Words already captured by a filter are stripped from the free text so they
+    are not also sent as semantic search terms.
+    """
     tokens=[]
     if aspect:tokens.append(f"aspect:{aspect}")
     if card_type:tokens.append(f"type:{card_type}")
@@ -186,7 +211,21 @@ def build_search_request(query,aspect=None,card_type=None,trait=None,arena=None,
         else:
             if lo is not None:tokens.append(f"{key}>={lo}")
             if hi is not None:tokens.append(f"{key}<={hi}")
+    strip_words=set()
+    for value in (aspect,card_type,trait,arena):
+        if value:strip_words.add(str(value))
+    if unique_only:strip_words.add("unique")
+    numbers=set()
+    for key,lo,hi in (("cost",min_cost,max_cost),("power",min_power,max_power),("hp",min_hp,max_hp)):
+        if lo is not None or hi is not None:
+            strip_words.add(key)
+            numbers.update(v for v in (lo,hi) if v is not None)
     text=(query or "").strip()
+    for number in numbers:
+        text=re.sub(r"-?\b"+re.escape(str(number))+r"\b-?"," ",text)
+    for word in strip_words:
+        text=re.sub(r"\b"+re.escape(word)+r"\b"," ",text,flags=re.IGNORECASE)
+    text=re.sub(r"\s+"," ",text).strip()
     if text:tokens.append(text)
     return " ".join(tokens)
 
@@ -254,7 +293,8 @@ async def search_official(query: str) -> dict[str, Any] | None:
         for uid in ids[:10]:
             meta = cards.get(uid)
             if meta:
-                out.append({"id": uid, "name": meta.get("name") or uid, "text": meta.get("text") or ""})
+                out.append({"id": uid, "name": meta.get("name") or uid, "text": meta.get("text") or "",
+                    "image": meta.get("image")})
             else:
                 out.append({"id": uid, "name": uid, "text": ""})
         return {"query": query, "cards": out, "count": len(out), "error": None}
@@ -358,7 +398,8 @@ async def search_cards(
         logger.info(f"🔍 SEARCH TOOL CALLED with query: {request}")
         async def call():
             found = await search_official(request)
-            if found is None:
+            if found is None or not found.get("cards"):
+                logger.info(f"Official search empty for {request!r}; falling back to direct search")
                 found = await search_cards_direct(query)
                 found["cards"] = await apply_search_filters(found["cards"],aspect=aspect,card_type=card_type,trait=trait,arena=arena,unique_only=unique_only,min_cost=min_cost,max_cost=max_cost,min_power=min_power,max_power=max_power,min_hp=min_hp,max_hp=max_hp)
                 found["count"] = len(found["cards"])
@@ -455,6 +496,10 @@ assistant_agent = Agent[CardSearchAgentContext](
         "The raw matches are already visible to the user on the tool card. "
         "Do NOT paste the result list back into chat: no 'Card matches' sections and no bare ability-text dumps. "
         "Discuss only the specific cards you recommend, by name with a one-line gameplay reason each.\n"
+        "\n"
+        "AFTER CALLING research_build_statistics:\n"
+        "The numbers stream as a widget the user can see; never reprint them as tables or lists, never print card IDs, and name at most 3 cards. "
+        "Give a one-or-two sentence takeaway naming the standout. Present broader-pool cards as candidates, never as members of the user's deck.\n"
         "\n"
         "IMPORTANT: When user asks about their decks, ALWAYS authenticate first.\n"
         "If you get an authentication error, provide them with the login URL\n"

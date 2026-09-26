@@ -15,6 +15,14 @@ class BuildSearchRequestTests(unittest.TestCase):
         self.assertEqual(build_search_request("leader",unique_only=True),"unique:true leader")
     def test_filters_without_query(self):
         self.assertEqual(build_search_request("",trait="Trooper"),"trait:Trooper")
+    def test_strips_filter_words(self):
+        self.assertEqual(build_search_request("Imperial unit",card_type="Unit",trait="Imperial",min_cost=5,max_cost=5),"type:Unit trait:Imperial cost:5")
+    def test_strips_numbers_and_dimension_words(self):
+        self.assertEqual(build_search_request("5 cost options",min_cost=5,max_cost=5),"cost:5 options")
+    def test_strip_case_insensitive(self):
+        self.assertEqual(build_search_request("IMPERIAL Unit",card_type="unit",trait="imperial"),"type:unit trait:imperial")
+    def test_plural_survives(self):
+        self.assertEqual(build_search_request("5 cost imperial units",card_type="Unit",trait="Imperial",min_cost=5,max_cost=5),"type:Unit trait:Imperial cost:5 units")
 
 FAKE={"u1":{"id":"u1","name":"A","cost":2,"type":"Unit","aspects":["Aggression"],"traits":["Mandalorian"],"arenas":["Ground"],"hp":3},
       "u2":{"id":"u2","name":"B","cost":5,"type":"Event","aspects":["Cunning"],"traits":[],"arenas":[],"hp":None},

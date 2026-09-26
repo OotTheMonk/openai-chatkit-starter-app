@@ -50,6 +50,20 @@ class StatisticsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([c['id'] for c in r['cards']],['wanted'])
             self.assertEqual(r['missing_ids'],['absent'])
 
+    async def test_wrapped_bulk_envelope_is_unwrapped(self):
+        payload={'data':[{'cardUid':'wanted','timesIncluded':120,'timesIncludedInWins':60,'timesPlayed':60,'timesPlayedInWins':30}]}
+        with patch('app.swustats_stats.request',AsyncMock(return_value={'data':payload,'error':None,'retrieved_at':'now'})):
+            r=await card_evidence(['wanted'],'Premier')
+            self.assertEqual([c['id'] for c in r['cards']],['wanted'])
+            self.assertEqual(r['cards'][0]['win_rate_when_played'],50)
+
+    async def test_wrapped_matchup_envelope_is_unwrapped(self):
+        rows=[{'opponentLeaderID':'o','opponentBaseID':'b','numPlays':40,'numWins':20}]
+        with patch('app.swustats_stats.request',AsyncMock(return_value={'data':{'data':rows},'error':None,'retrieved_at':'now'})):
+            r=await matchup_evidence('l','b','Premier')
+            self.assertEqual(len(r['matchups']),1)
+            self.assertEqual(r['matchups'][0]['win_rate'],50)
+
     async def test_matchups_validate_samples_and_preserve_scope(self):
         rows=[{'opponentLeaderID':'o','opponentBaseID':'b','numPlays':20,'numWins':8},{'leaderID':'wrong','opponentLeaderID':'o','opponentBaseID':'b','numPlays':100,'numWins':80},{'opponentLeaderID':'o','opponentBaseID':'b','numPlays':5,'numWins':8}]
         with patch('app.swustats_stats.request',AsyncMock(return_value={'data':rows,'error':None,'retrieved_at':'now'})):

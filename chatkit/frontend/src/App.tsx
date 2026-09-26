@@ -85,7 +85,7 @@ export default function App() {
    catch(e){failed(e instanceof Error?e.message:"Unable to remove card.");}finally{setBusy(false);}
  };
  const removeAllCard=async(ids:string[],section:"deck"|"sideboard")=>{
-  if(!threadId||!draft)return;let next:Draft|null=draft;for(const cid of ids){const b=next?bump(next,cid,section,"removeAll"):null;if(b)next=b;}if(next&&next!==draft)setDraft(next);setBusy(true);setNotice("");
+   if(!threadId||!draft)return;let next:Draft|null=draft;for(const cid of ids){const b:Draft|null=next?bump(next,cid,section,"removeAll"):null;if(b)next=b;}if(next&&next!==draft)setDraft(next);setBusy(true);setNotice("");
   try{let rev=draft.revision;const deckId=draft.active_deck_id;let current:Draft=draft;
    for(const id of ids){const r=await fetch(base+"/api/workspace/"+encodeURIComponent(threadId)+"/remove",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck_id:deckId,revision:rev,card_id:id,section,all_copies:true})});const data=await r.json() as Draft&{error?:string};if(!r.ok)throw Error(data.error||"Unable to remove card.");rev=data.revision;current=data;}
    setDraft(current);}
@@ -122,7 +122,7 @@ export default function App() {
    </div>
    {inspectorOpen&&<><div className="splitter" role="separator" tabIndex={0} aria-label="Resize conversation and deck" aria-orientation="vertical" aria-valuemin={35} aria-valuemax={60} aria-valuenow={Math.round(split)} onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();resize(split+(e.key==="ArrowLeft"?2:-2));}}} onPointerDown={e=>e.currentTarget.setPointerCapture(e.pointerId)} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId)&&body.current){const r=body.current.getBoundingClientRect();resize(100*(r.right-e.clientX)/r.width);}}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}><span/></div>
     <aside className="deck-inspector is-open" aria-label="Working deck"><div className="inspector-heading"><button title="Close deck pane" className="icon-button" aria-label="Close deck pane" onClick={()=>setInspectorOpen(false)}><Icon name="close" size={18}/></button></div>
-     <DeckPanel onRemove={(id,section,all)=>void removeCard(id,section,all)} onRemoveAll={(ids,section)=>void removeAllCard(ids,section)} onAdd={(id,section)=>void addCard(id,section)} draft={draft} loading={loading} busy={busy} onBrowse={()=>{setView("library");setInspectorOpen(false);}}/>
+     <DeckPanel onRemove={(id,section,all)=>void removeCard(id,section,all)} onRemoveAll={(ids,section)=>void removeAllCard(ids,section)} onAdd={(id,section)=>void addCard(id,section)} draft={draft} threadId={threadId} loading={loading} busy={busy} onBrowse={()=>{setView("library");setInspectorOpen(false);}}/>
     </aside></>}
   </div>
  </main>

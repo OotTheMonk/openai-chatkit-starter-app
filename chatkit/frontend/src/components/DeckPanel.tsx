@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "./Icon";
+import { ResidualSimulation } from "./ResidualSimulation";
 import { type DeckCard, type Draft, swuCardImage } from "../lib/deck";
 function CardImage({card,full=false}:{card:DeckCard;full?:boolean}) {
  const [failed,setFailed]=useState(false);
  return failed?<span className="image-fallback">{card.name||card.id}</span>:<img src={swuCardImage(card.id,full)} alt={card.name||"Card "+card.id} loading="lazy" onError={()=>setFailed(true)}/>;
 }
-export function DeckPanel({draft,loading,busy,onBrowse,onRemove,onRemoveAll,onAdd}:{onRemove:(id:string,section:"deck"|"sideboard",allCopies:boolean)=>void;onRemoveAll:(ids:string[],section:"deck"|"sideboard")=>void;onAdd:(id:string,section:"deck"|"sideboard")=>void;draft:Draft|null;loading:boolean;busy:boolean;onBrowse:()=>void}) {
+export function DeckPanel({draft,threadId,loading,busy,onBrowse,onRemove,onRemoveAll,onAdd}:{onRemove:(id:string,section:"deck"|"sideboard",allCopies:boolean)=>void;onRemoveAll:(ids:string[],section:"deck"|"sideboard")=>void;onAdd:(id:string,section:"deck"|"sideboard")=>void;draft:Draft|null;threadId:string|null;loading:boolean;busy:boolean;onBrowse:()=>void}) {
  const [preview,setPreview]=useState<DeckCard|null>(null),[tab,setTab]=useState<"deck"|"sideboard">("deck");
  const [costFilter,setCostFilter]=useState<number|null>(null);
  useEffect(()=>{setCostFilter(null);setPreview(null);},[draft?.active_deck_id]);
@@ -27,6 +28,7 @@ export function DeckPanel({draft,loading,busy,onBrowse,onRemove,onRemoveAll,onAd
   <div className="deck-title-row"><div className="deck-title-copy"><h2 className="deck-title">{draft?.active_deck_name||deck.metadata.name}</h2><div className="deck-summary-line"><strong>{main}</strong> main deck <span>·</span><strong>{side}</strong> sideboard</div></div><div className={"deck-validation "+(checks.length?"is-invalid":"is-valid")} tabIndex={0} role="img" aria-label={checks.length?`Deck checks: ${checks.join("; ")}`:"Basic deck checks passed"}><Icon name={checks.length?"warning":"check"} size={18}/><div className="deck-validation-tooltip" role="tooltip"><strong>{checks.length?"Check before play":"Basic checks passed"}</strong>{checks.length?<ul>{checks.map(check=><li key={String(check)}>{check}</li>)}</ul>:<p>Leader, base, main deck and sideboard counts checked.</p>}<small>Premier baseline only. Format, bans, special card rules and aspect penalties are not verified.</small></div></div></div>
   <div className="identity-grid">{[{card:deck.leader,label:"Leader"},{card:deck.base,label:"Base"}].map(({card,label})=>card&&<button key={card.id} className="identity-card" aria-label={"Inspect "+(card.name||label)} onClick={()=>setPreview(card)}><CardImage card={card} full/></button>)}</div>
   <details className="deck-analysis" open><summary>Resources & card types</summary><div className="curve" aria-label="Printed resource cost distribution">{curve.map((n,i)=><button type="button" key={i} aria-pressed={costFilter===i} onClick={()=>setCostFilter(costFilter===i?null:i)} aria-label={"Filter "+(i===7?"7+":i)+" cost: "+n+" cards"}><span>{n}</span><i style={{height:(n/max*48)+"px"}}/><small>{i===7?"7+":i}</small></button>)}</div><p className="type-distribution">{types.map(([type,n])=><span key={type}>{type} <strong>{n}</strong></span>)}</p>{known<(tab==="deck"?main:side)&&<p className="muted">{(tab==="deck"?main:side)-known} cards have unknown costs.</p>}</details>
+  {draft && <ResidualSimulation draft={draft} threadId={threadId}/>}
   {draft?.proposal&&<p className="muted" role="status">A proposal is waiting for review in the conversation.</p>}
   <div className="deck-tabs" role="tablist" aria-label="Deck section">{(["deck","sideboard"] as const).map(t=><button role="tab" aria-selected={tab===t} key={t} onClick={()=>setTab(t)}>{t==="deck"?"Main deck":"Sideboard"} <span>{t==="deck"?main:side}</span></button>)}</div>
   {costFilter!==null&&<div className="cost-filter-status" role="status">Showing {costFilter===7?"7+":costFilter}-cost cards<button className="text-button" onClick={()=>setCostFilter(null)}>Clear cost filter</button></div>}

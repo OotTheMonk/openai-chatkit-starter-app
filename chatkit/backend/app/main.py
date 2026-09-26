@@ -381,6 +381,45 @@ async def get_deck_state(thread_id: str) -> JSONResponse:
         return JSONResponse({"error":str(exc)},status_code=400)
 
 
+@app.post("/api/simulations/run/{thread_id}")
+@app.post("/api/simulations/turn-one/{thread_id}")
+async def simulate_turn_one(thread_id: str, request: Request) -> JSONResponse:
+    """Run a seeded local SWUSim opening or full game against a meta fixture."""
+    import asyncio
+    from copy import deepcopy
+    from .drafts import ensure_draft
+    from .simulation import run_local
+
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Provide a simulation request.")
+        state = await ensure_draft(chatkit_server.deck_manager, thread_id)
+        if not state.deck_contents:
+            raise ValueError("Choose a working deck first.")
+        contents = deepcopy(state.deck_contents)
+        deck_id, revision = state.active_deck_id, state.revision
+        result = await asyncio.to_thread(
+            run_local, contents, deck_id, revision,
+            str(payload.get("opponent", "ahsoka_blue")),
+            str(payload.get("seed", "opening")), payload.get("samples", 1),
+            str(payload.get("mode", "residual")),
+        )
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except (RuntimeError, TimeoutError) as exc:
+        logger.exception("Local SWUSim simulation failed")
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+
+@app.get("/api/simulations/opponents")
+async def simulation_opponents() -> JSONResponse:
+    from .catalog import catalog
+    from .simulation import available_opponents
+    return JSONResponse({"opponents": available_opponents(await catalog())})
+
+
 @app.post("/api/draft/{thread_id}/{action}")
 async def draft_action(thread_id: str, action: str, request: Request):
     from .drafts import act
@@ -419,7 +458,14 @@ def list_models():
 @app.get("/api/conversations/{thread_id}")
 async def conversation(thread_id:str):
     items=await chatkit_server.store.load_thread_items(thread_id,None,100,"desc",{})
-    return JSONResponse([i.model_dump(mode="json") for i in reversed(items.data)])
+    out=[]
+    for i in reversed(items.data):
+        d=i.model_dump(mode="json")
+        # Internal items can carry non-list content; the chat UI only renders lists.
+        if d.get("content") is not None and not isinstance(d.get("content"),list):
+            d["content"]=[]
+        out.append(d)
+    return JSONResponse(out)
 
 
 @app.post("/api/workspace/select")

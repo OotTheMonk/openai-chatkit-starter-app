@@ -1,0 +1,54 @@
+.residual-simulation{margin:18px 0;padding:14px;border:1px solid #d3dece;border-radius:9px;background:#f0f5eb;font-size:13px;line-height:1.5}
+.residual-simulation>summary,.residual-results summary{font-weight:700;cursor:pointer}
+.residual-controls{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:10px;margin:12px 0}
+.residual-controls label{display:grid;gap:4px;font-weight:600;color:#415944}
+.residual-controls .residual-mode-field{grid-column:1/-1}
+.residual-opponent-field{grid-column:1/-1;min-width:0}
+.residual-field-label{display:block;margin-bottom:4px;font-weight:600;color:#415944}
+.residual-controls input,.residual-controls select{min-width:0;width:100%;padding:7px 8px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#243b30;font:inherit}
+.residual-opponent-menu{position:relative}
+.residual-opponent-menu>summary{display:flex;align-items:center;gap:8px;min-height:46px;padding:4px 8px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#243b30;cursor:pointer;list-style:none}
+.residual-opponent-menu>summary::-webkit-details-marker{display:none}
+.residual-opponent-menu>summary::after{content:"⌄";margin-left:auto;font-size:18px}
+.residual-opponent-menu>summary>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.residual-opponent-menu>summary:focus-visible,.residual-opponent-options button:focus-visible{outline:2px solid #326958;outline-offset:2px}
+.residual-opponent-options{position:absolute;z-index:20;top:calc(100% + 2px);left:0;right:0;max-height:320px;overflow:auto;border:1px solid #b9cab5;border-radius:5px;background:#fff;box-shadow:0 10px 24px #10291e30}
+.residual-opponent-options button{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;background:#fff;color:#243b30;text-align:left;font:inherit;cursor:pointer}
+.residual-opponent-options button:hover,.residual-opponent-options button.is-selected{background:#e5f0e5}
+.residual-opponent-options button:disabled{cursor:default;opacity:.6}
+.residual-opponent-identity{display:flex;flex:none;gap:2px;min-width:0}
+.residual-opponent-identity img{display:block;width:50px;height:38px;object-fit:cover;border-radius:3px;background:#e4e9df}
+.residual-controls button{align-self:end}
+.residual-results{border-top:1px solid #d3dece;margin-top:14px;padding-top:8px}
+.residual-results p{margin:7px 0}
+.residual-results small{color:#5e6b62;overflow-wrap:anywhere}
+.residual-error{color:#8f3b2d}
+.residual-sample{margin:7px 0;padding:7px;border:1px solid #d3dece;border-radius:5px;background:#fff}
+.residual-sample ol{max-height:180px;overflow:auto;padding-left:22px;overflow-wrap:anywhere}
+.residual-game-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.residual-game-metrics>div{display:flex;flex-direction:column;gap:2px;padding:9px;border:1px solid #d3dece;border-radius:6px;background:#fff}
+.residual-game-metrics strong{font-size:18px;color:#244e40}
+.residual-game-metrics span{font-size:11px;color:#5e6b62;line-height:1.25}
+.residual-health-timeline{margin:12px 0;padding:10px;border:1px solid #e0e8dc;border-radius:7px;background:#fafcf8}
+.residual-health-legend{display:flex;gap:14px;margin-bottom:9px;font-size:11px;color:#526457}
+.residual-health-legend span::before{content:"";display:inline-block;width:9px;height:9px;margin-right:5px;border-radius:2px;background:#3d8066}
+.residual-health-legend span.opponent::before{background:#bd8c52}
+.residual-health-chart{display:block;width:100%;height:auto}
+.residual-health-chart text{fill:#607168;font-size:11px}
+.residual-health-chart .grid{stroke:#dce5db;stroke-width:1}
+.residual-health-chart .series{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.residual-health-chart .series.ours{stroke:#3d8066}
+.residual-health-chart .series.opponent{stroke:#bd8c52;stroke-dasharray:6 4}
+.residual-health-chart .point{stroke:#fafcf8;stroke-width:2}
+.residual-health-chart .point.ours{fill:#3d8066}
+.residual-health-chart .point.opponent{fill:#bd8c52}
+.residual-log-button{margin:2px 0 4px;padding:6px 10px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#285e4a;font:inherit;font-weight:600;cursor:pointer}
+.residual-log-button:hover{background:#e5f0e5}
+.residual-action-dialog{width:min(700px,calc(100vw - 32px));max-height:min(80vh,800px);padding:18px;border:1px solid #b9cab5;border-radius:9px;background:#fff;color:#243b30;box-shadow:0 20px 60px #10291e40}
+.residual-action-dialog::backdrop{background:#10291e80}
+.residual-action-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.residual-action-header h3{margin:0;font-size:18px}
+.residual-action-header button{border:0;background:none;color:#415944;font-size:25px;line-height:1;cursor:pointer}
+.residual-action-dialog ol{max-height:60vh;overflow:auto;margin:14px 0 0;padding-left:25px;overflow-wrap:anywhere}
+.residual-action-dialog li{padding:3px 0}
+@media(max-width:600px){.residual-game-metrics{grid-template-columns:1fr}.residual-game-metrics>div{flex-direction:row;align-items:center;gap:10px}}

@@ -1,0 +1,100 @@
+{
+  "version": "1.0",
+  "name": "card_performance",
+  "template": "{\"type\":\"ListView\",\"limit\":3,\"children\":[{\"type\":\"ListViewItem\",\"key\":\"header\",\"children\":[{\"type\":\"Text\",\"value\":{{title|tojson}},\"size\":\"lg\",\"weight\":\"bold\"}]},{\"type\":\"ListViewItem\",\"key\":\"cards\",\"children\":[{\"type\":\"Row\",\"wrap\":\"wrap\",\"align\":\"stretch\",\"gap\":2,\"children\":[{% for row in cards %}{\"type\":\"Box\",\"key\":{{row.id|tojson}},\"width\":\"47%\",\"minWidth\":\"260px\",\"flex\":1,\"padding\":2,\"radius\":\"md\",\"background\":{{row.heat|tojson}},\"children\":[{\"type\":\"Row\",\"align\":\"center\",\"gap\":2,\"children\":[{% if row.image %}{\"type\":\"Image\",\"id\":{{row.id|tojson}},\"src\":{{row.image|tojson}},\"alt\":{{row.name|tojson}},\"size\":56,\"fit\":\"contain\",\"aspectRatio\":1},{% endif %}{\"type\":\"Col\",\"gap\":1,\"flex\":1,\"children\":[{\"type\":\"Text\",\"value\":{{row.name|tojson}},\"size\":\"sm\",\"weight\":\"semibold\",\"maxLines\":2},{\"type\":\"Row\",\"gap\":1,\"wrap\":\"wrap\",\"children\":[{\"type\":\"Badge\",\"label\":{{row.play.label|tojson}},\"color\":\"secondary\",\"variant\":\"soft\",\"size\":\"sm\"},{\"type\":\"Badge\",\"label\":{{row.win.label|tojson}},\"color\":{{row.win.color|tojson}},\"variant\":\"soft\",\"size\":\"sm\"}]}{% if row.sample %},{\"type\":\"Text\",\"value\":{{row.sample|tojson}},\"size\":\"xs\",\"color\":\"tertiary\"}{% endif %}]}]}]}{{\",\" if not loop.last}}{% endfor %}]}]}{% if more %},{\"type\":\"ListViewItem\",\"key\":\"more\",\"children\":[{\"type\":\"Text\",\"value\":{{(\"+\"~more~\" more — full numbers in the tool card\")|tojson}},\"size\":\"sm\",\"color\":\"tertiary\"}]}{% endif %}]}",
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 1
+      },
+      "subtitle": {
+        "type": "string",
+        "minLength": 1
+      },
+      "more": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "cards": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "heat": {
+              "type": "string"
+            },
+            "play": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "color": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "color"
+              ],
+              "additionalProperties": false
+            },
+            "win": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "color": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "color"
+              ],
+              "additionalProperties": false
+            },
+            "sample": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "heat",
+            "play",
+            "win"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "title",
+      "subtitle",
+      "cards",
+      "more"
+    ],
+    "additionalProperties": false
+  }
+}

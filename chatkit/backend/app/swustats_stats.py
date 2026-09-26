@@ -63,6 +63,20 @@ def rate(wins,plays):
     a,b=number(wins),number(plays)
     return round(100*a/b,2) if a is not None and b and a<=b else None
 
+def _rows(data):
+    """Bulk rows tolerant of envelope shapes.
+
+    The documented example shows a single object while live responses
+    return a bare array; some deployments wrap it as {'data': [...]}.
+    """
+    if isinstance(data,list):return data
+    if isinstance(data,dict):
+        for key in ('data','cards','stats','results','rows'):
+            value=data.get(key)
+            if isinstance(value,list):return value
+        return [data]
+    return []
+
 def normalize_card(row):
     cid=row.get('cardUid') or row.get('cardId')
     if not cid:return None
@@ -77,7 +91,7 @@ def normalize_card(row):
 async def card_evidence(ids,format,start_week=None,end_week=None):
     params=window_params(format,start_week,end_week)
     response=await request('Stats/CardMetaStatsAPI.php',params)
-    data=response['data'];rows=data if isinstance(data,list) else [data] if isinstance(data,dict) else []
+    rows=_rows(response['data'])
     wanted=set(ids);found={}
     for row in rows:
         if not isinstance(row,dict):continue
@@ -89,7 +103,7 @@ async def card_evidence(ids,format,start_week=None,end_week=None):
 async def matchup_evidence(leader_id,base_id,format,start_week=None,end_week=None):
     params={**window_params(format,start_week,end_week),'leaderID':leader_id,'baseID':base_id}
     response=await request('APIs/DeckMetaMatchupStatsAPI.php',params)
-    rows=response['data'] if isinstance(response['data'],list) else []
+    rows=_rows(response['data'])
     matchups=[]
     for row in rows:
         if not isinstance(row,dict) or not row.get('opponentLeaderID') or not row.get('opponentBaseID'):continue
