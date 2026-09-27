@@ -8,6 +8,26 @@ import { Icon } from "./components/Icon";
 import { CHATKIT_API_URL } from "./lib/config";
 import { type Draft, goals } from "./lib/deck";
 const base = CHATKIT_API_URL.replace(/\/chatkit\/?$/, "");
+type CardSection = "deck" | "sideboard";
+type CardEdit = {cardId:string;section:CardSection;kind:"add"|"remove";allCopies?:boolean;name?:string};
+function applyCardEdit(prev:Draft,edit:CardEdit):Draft|null {
+ const contents=prev.deck_contents;
+ if(!contents)return null;
+ const rows=contents[edit.section].map(card=>({...card}));
+ const index=rows.findIndex(card=>String(card.id)===edit.cardId);
+ if(edit.kind==="add"){
+  if(index>=0){if(rows[index].count>=99)return null;rows[index].count++;}
+  else rows.push({id:edit.cardId,name:edit.name||edit.cardId,count:1});
+ }else{
+  if(index<0)return null;
+  if(edit.allCopies||rows[index].count<=1)rows.splice(index,1);
+  else rows[index].count--;
+ }
+ return {...prev,deck_contents:{...contents,[edit.section]:rows},proposal:null,dirty:prev.source==="local"||prev.dirty,can_undo:true};
+}
+function replayEdits(confirmed:Draft,edits:CardEdit[]):Draft {
+ return edits.reduce((current,edit)=>applyCardEdit(current,edit)||current,confirmed);
+}
 function preference(key: string, fallback: number) { const v = Number(localStorage.getItem(key)); return Number.isFinite(v) && v > 0 ? v : fallback; }
 export default function App() {
  const [view,setView]=useState<"assistant"|"library"|"discovery">("assistant");
@@ -15,13 +35,16 @@ export default function App() {
  const [draft,setDraft]=useState<Draft|null>(null);
  const [connected,setConnected]=useState(false);
  const [collapsed,setCollapsed]=useState(()=>localStorage.getItem("nav-expanded")!=="true");
+ const [theme,setTheme]=useState<"light"|"dark">(()=>document.documentElement.dataset.theme==="dark"?"dark":"light");
  const [split,setSplit]=useState(()=>Math.max(35,Math.min(60,preference("deck-width",48))));
  const [inspectorOpen,setInspectorOpen]=useState(false);
  const [notice,setNotice]=useState("");
  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(""),6000);return ()=>clearTimeout(timer);},[notice]);
  const [refresh,setRefresh]=useState(0);
  const [loading,setLoading]=useState(false);
- const [busy,setBusy]=useState(false);
+ const [recovering,setRecovering]=useState(false);
+ const draftRef=useRef<Draft|null>(null),confirmedDraft=useRef<Draft|null>(null);
+ const pendingEdits=useRef<CardEdit[]>([]),savingEdits=useRef(false),recoveringRef=useRef(false),editGeneration=useRef(0),threadRef=useRef(threadId);
  const [goal,setGoal]=useState<string|null>(null),[detail,setDetail]=useState("");
  useEffect(()=>{
    if(!goal)return;
@@ -44,13 +67,20 @@ export default function App() {
    if(event.name==="view_library"){setView("library");setInspectorOpen(false);}
    if(event.name==="deck_refresh"||event.name==="draft_refresh"){setRefresh(v=>v+1);setInspectorOpen(true);}
  },[]);
- const changeThread=useCallback((id:string|null)=>{setThreadId(id);setDraft(null);},[]);
+ const changeThread=useCallback((id:string|null)=>{
+   editGeneration.current++;pendingEdits.current=[];savingEdits.current=false;recoveringRef.current=false;setRecovering(false);
+   threadRef.current=id;draftRef.current=null;confirmedDraft.current=null;
+   setThreadId(id);setDraft(null);
+ },[]);
  useEffect(()=>{
    if(!threadId)return;
-   const abort=new AbortController();setLoading(true);
+   const abort=new AbortController(),generation=editGeneration.current;setLoading(true);
    fetch(base+"/api/deck-state/"+encodeURIComponent(threadId),{signal:abort.signal}).then(async r=>{
      const d=await r.json() as Draft & {error?:string};if(!r.ok)throw Error(d.error||"Unable to load this working draft.");return d as Draft;
-   }).then(d=>{if(!abort.signal.aborted){setDraft(d);if(d.active_deck_id)setInspectorOpen(true);}})
+   }).then(d=>{if(!abort.signal.aborted&&generation===editGeneration.current&&!pendingEdits.current.length){
+     if(confirmedDraft.current?.active_deck_id===d.active_deck_id&&d.revision<confirmedDraft.current.revision)return;
+     confirmedDraft.current=d;draftRef.current=d;setDraft(d);recoveringRef.current=false;setRecovering(false);if(d.active_deck_id)setInspectorOpen(true);
+   }})
    .catch((e:unknown)=>{if(!abort.signal.aborted)setNotice(e instanceof Error?e.message:"Unable to load draft.");}).finally(()=>{if(!abort.signal.aborted)setLoading(false);});
    return ()=>abort.abort();
  },[threadId,refresh]);
@@ -63,37 +93,58 @@ export default function App() {
    localStorage.setItem("recent-decks",JSON.stringify([deck.id,...recent.filter(id=>id!==deck.id)].slice(0,20)));
    await run(()=>chat.current?.selectDeck(deck.id,deck.name,!!threadId));setRefresh(v=>v+1);
  };
- const bump=(prev:Draft,cardId:string,section:"deck"|"sideboard",mode:"add"|"remove"|"removeAll"):Draft|null=>{
-  const base=prev.deck_contents;if(!base)return null;
-  const ix=base[section].findIndex(c=>String(c.id)===cardId);if(ix<0)return null;
-  const next=base[section].map(c=>({...c}));
-  if(mode==="add")next[ix]={...next[ix],count:next[ix].count+1};
-  else if(mode==="removeAll"||next[ix].count<=1)next.splice(ix,1);
-  else next[ix]={...next[ix],count:next[ix].count-1};
-  const contents={...base};contents[section]=next;
-  return {...prev,deck_contents:contents,proposal:null,dirty:true,can_undo:true};
+ async function drainEdits(generation:number,editThread:string,deckId:number){
+  if(savingEdits.current)return;
+  savingEdits.current=true;
+  try{
+   while(pendingEdits.current.length&&generation===editGeneration.current){
+    const edit=pendingEdits.current[0],confirmed=confirmedDraft.current;
+    if(!confirmed||confirmed.active_deck_id!==deckId)throw Error("The active deck changed.");
+    const r=await fetch(base+"/api/workspace/"+encodeURIComponent(editThread)+"/"+edit.kind,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck_id:deckId,revision:confirmed.revision,card_id:edit.cardId,section:edit.section,...(edit.kind==="remove"?{all_copies:!!edit.allCopies}:{})})});
+    const data=await r.json() as Draft&{error?:string};
+    if(generation!==editGeneration.current)return;
+    if(!r.ok)throw Error(data.error||"Could not save the card change.");
+    confirmedDraft.current=data;pendingEdits.current.shift();
+    const visible=replayEdits(data,pendingEdits.current);draftRef.current=visible;setDraft(visible);
+   }
+  }catch(error){
+   if(generation!==editGeneration.current)return;
+   pendingEdits.current=[];
+   recoveringRef.current=true;setRecovering(true);
+   const message=error instanceof Error?error.message:"Could not save the card change.";
+   try{
+    const r=await fetch(base+"/api/deck-state/"+encodeURIComponent(editThread));
+    const data=await r.json() as Draft&{error?:string};
+    if(!r.ok)throw Error(data.error||"Could not reload the deck.");
+    if(generation!==editGeneration.current)return;
+    confirmedDraft.current=data;draftRef.current=data;setDraft(data);
+    recoveringRef.current=false;setRecovering(false);
+    setNotice(message+" Your deck has been re-synced.");
+   }catch{
+    if(generation!==editGeneration.current)return;
+    draftRef.current=confirmedDraft.current;setDraft(confirmedDraft.current);
+    setNotice(message+" The deck could not be re-synced; reload it before editing again.");
+   }
+  }finally{
+   if(generation===editGeneration.current){savingEdits.current=false;if(pendingEdits.current.length)void drainEdits(generation,editThread,deckId);}
+  }
+ }
+ const editCards=(edits:CardEdit[])=>{
+  const current=draftRef.current,editThread=threadRef.current;
+  if(!current||!editThread||!current.active_deck_id||recoveringRef.current)return;
+  let visible=current;const accepted:CardEdit[]=[];
+  for(const edit of edits){const next=applyCardEdit(visible,edit);if(next){visible=next;accepted.push(edit);}}
+  if(!accepted.length)return;
+  pendingEdits.current.push(...accepted);draftRef.current=visible;setDraft(visible);setNotice("");
+  void drainEdits(editGeneration.current,editThread,current.active_deck_id);
  };
- const failed=(message:string)=>{setNotice(message);setRefresh(v=>v+1);};
- const addCard=async(cardId:string,section:"deck"|"sideboard")=>{
-  if(!threadId||!draft)return;const next=bump(draft,cardId,section,"add");if(next)setDraft(next);setBusy(true);setNotice("");
-  try{const r=await fetch(base+"/api/workspace/"+encodeURIComponent(threadId)+"/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck_id:draft.active_deck_id,revision:draft.revision,card_id:cardId,section})});const data=await r.json() as Draft&{error?:string};if(!r.ok)throw Error(data.error||"Unable to add card.");setDraft(data);}
-  catch(e){failed(e instanceof Error?e.message:"Unable to add card.");}finally{setBusy(false);}
- };
- const removeCard=async(cardId:string,section:"deck"|"sideboard",allCopies:boolean)=>{
-   if(!threadId||!draft)return;const next=bump(draft,cardId,section,allCopies?"removeAll":"remove");if(next)setDraft(next);setBusy(true);setNotice("");
-   try{const r=await fetch(base+"/api/workspace/"+encodeURIComponent(threadId)+"/remove",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck_id:draft.active_deck_id,revision:draft.revision,card_id:cardId,section,all_copies:allCopies})});const data=await r.json() as Draft&{error?:string};if(!r.ok)throw Error(data.error||"Unable to remove card.");setDraft(data);}
-   catch(e){failed(e instanceof Error?e.message:"Unable to remove card.");}finally{setBusy(false);}
- };
- const removeAllCard=async(ids:string[],section:"deck"|"sideboard")=>{
-   if(!threadId||!draft)return;let next:Draft|null=draft;for(const cid of ids){const b:Draft|null=next?bump(next,cid,section,"removeAll"):null;if(b)next=b;}if(next&&next!==draft)setDraft(next);setBusy(true);setNotice("");
-  try{let rev=draft.revision;const deckId=draft.active_deck_id;let current:Draft=draft;
-   for(const id of ids){const r=await fetch(base+"/api/workspace/"+encodeURIComponent(threadId)+"/remove",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck_id:deckId,revision:rev,card_id:id,section,all_copies:true})});const data=await r.json() as Draft&{error?:string};if(!r.ok)throw Error(data.error||"Unable to remove card.");rev=data.revision;current=data;}
-   setDraft(current);}
-  catch(e){failed(e instanceof Error?e.message:"Unable to remove card.");}finally{setBusy(false);}
- };
+ const addCard=(cardId:string,section:CardSection,name?:string)=>editCards([{cardId,section,kind:"add",name}]);
+ const removeCard=(cardId:string,section:CardSection,allCopies:boolean)=>editCards([{cardId,section,kind:"remove",allCopies}]);
+ const removeAllCard=(ids:string[],section:CardSection)=>editCards(ids.map(cardId=>({cardId,section,kind:"remove",allCopies:true})));
  const chooseGoal=(value:string)=>{setGoal(value);setDetail("");setView("assistant");};
  const submitGoal=()=>{const text=goal==="Adjust proposal"?"Adjust the pending proposal":goal;setGoal(null);void run(()=>chat.current?.ask(text+" for my active working draft. "+(detail.trim()||"Ask me one focused question about my goal before proposing changes.")+" Read the working draft first. Propose changes for review; don't apply them."));};
  const resize=(value:number)=>{const n=Math.max(35,Math.min(60,value));setSplit(n);localStorage.setItem("deck-width",String(n));};
+ const toggleTheme=()=>{const next=theme==="light"?"dark":"light";setTheme(next);document.documentElement.dataset.theme=next;localStorage.setItem("chat-tcg-theme",next);};
  return <div className={"app-shell builder-shell "+(collapsed?"nav-collapsed":"")}>
  <a className="skip-link" href="#workspace">Skip to workspace</a>
  <aside className="sidebar">
@@ -104,6 +155,7 @@ export default function App() {
    <button title="Deck library" aria-label="Deck library" className={"nav-item "+(view==="library"?"current":"")} onClick={()=>{setView("library");setInspectorOpen(false);}}><Icon name="cards"/><span className="nav-copy">Deck library</span></button>
    <button title="Conversation history" aria-label="Conversation history" className="nav-item" onClick={()=>{setView("assistant");void run(()=>chat.current?.history());}}><Icon name="history"/><span className="nav-copy">Conversations</span></button>
   </nav>
+  <button className="nav-item theme-toggle" title={theme==="light"?"Switch to dark mode":"Switch to light mode"} aria-label={theme==="light"?"Switch to dark mode":"Switch to light mode"} aria-pressed={theme==="dark"} onClick={toggleTheme}><Icon name={theme==="light"?"moon":"sun"}/><span className="nav-copy">{theme==="light"?"Dark mode":"Light mode"}</span></button>
   <button className="nav-item collapse-nav" title={collapsed?"Expand navigation":"Collapse navigation"} aria-label={collapsed?"Expand navigation":"Collapse navigation"} aria-expanded={!collapsed} onClick={()=>{setCollapsed(!collapsed);localStorage.setItem("nav-expanded",String(collapsed));}}><span aria-hidden="true">{collapsed?"»":"«"}</span><span className="nav-copy">Collapse</span></button>
  </aside>
  <main id="workspace" className="workspace">
@@ -112,7 +164,7 @@ export default function App() {
   <div className={"workspace-body "+(inspectorOpen?"with-deck":"")} ref={body} style={{"--deck-width":split+"%"} as CSSProperties}>
    <div className="main-content">
     <section className={view==="assistant"?"assistant-view":"assistant-view is-hidden"} aria-label="Conversation">
-     <ChatKitPanel ref={chat} onThreadChange={changeThread} onEffect={effect} activeDeckId={activeDeckId} context={<div className="conversation-context">
+     <ChatKitPanel ref={chat} onThreadChange={changeThread} onEffect={effect} activeDeckId={activeDeckId} draft={draft} cardBusy={recovering} onAddCard={(id,name)=>addCard(id,"deck",name)} onRemoveCard={id=>removeCard(id,"deck",false)} context={<div className="conversation-context">
       <div>{activeDeckId?<><span>Working on <strong>{activeName||"selected deck"}</strong></span><span className="draft-badge">{draft?.dirty?"Unsaved draft":"Saved deck"}</span><button className="text-button" onClick={()=>{setView("library");setInspectorOpen(false);}}>Change deck</button></>:<><span>Select a deck to start building together.</span><button className="text-button" onClick={()=>{setView("library");setInspectorOpen(false);}}>Browse decks</button></>}</div>
       {activeDeckId&&<div className="goal-actions">{goals.map(g=><button key={g} onClick={()=>chooseGoal(g)}>{g}</button>)}</div>}
      </div>}/>
@@ -122,7 +174,7 @@ export default function App() {
    </div>
    {inspectorOpen&&<><div className="splitter" role="separator" tabIndex={0} aria-label="Resize conversation and deck" aria-orientation="vertical" aria-valuemin={35} aria-valuemax={60} aria-valuenow={Math.round(split)} onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();resize(split+(e.key==="ArrowLeft"?2:-2));}}} onPointerDown={e=>e.currentTarget.setPointerCapture(e.pointerId)} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId)&&body.current){const r=body.current.getBoundingClientRect();resize(100*(r.right-e.clientX)/r.width);}}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}><span/></div>
     <aside className="deck-inspector is-open" aria-label="Working deck"><div className="inspector-heading"><button title="Close deck pane" className="icon-button" aria-label="Close deck pane" onClick={()=>setInspectorOpen(false)}><Icon name="close" size={18}/></button></div>
-     <DeckPanel onRemove={(id,section,all)=>void removeCard(id,section,all)} onRemoveAll={(ids,section)=>void removeAllCard(ids,section)} onAdd={(id,section)=>void addCard(id,section)} draft={draft} threadId={threadId} loading={loading} busy={busy} onBrowse={()=>{setView("library");setInspectorOpen(false);}}/>
+     <DeckPanel onRemove={(id,section,all)=>removeCard(id,section,all)} onRemoveAll={(ids,section)=>removeAllCard(ids,section)} onAdd={(id,section)=>addCard(id,section)} draft={draft} threadId={threadId} loading={loading} busy={recovering} onBrowse={()=>{setView("library");setInspectorOpen(false);}}/>
     </aside></>}
   </div>
  </main>

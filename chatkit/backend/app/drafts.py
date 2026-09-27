@@ -226,18 +226,26 @@ async def remove_card(manager,thread_id,deck_id,revision,card_id,section,all_cop
     return _record(manager,state,pre)
 
 async def add_card(manager,thread_id,deck_id,revision,card_id,section):
-    """Add one copy of a row already in the draft. Linked decks push a single add op."""
+    """Add one verified card copy to the draft or linked deck."""
     state=manager.get_state(thread_id)
     if state.active_deck_id!=deck_id or state.revision!=revision:raise ValueError("The deck changed. Refresh before editing cards.")
     if section not in {"deck","sideboard"} or not state.deck_contents:raise ValueError("Choose a card in the main deck or sideboard.")
     rows=state.deck_contents.get(section,[])
     card=next((c for c in rows if str(c['id'])==card_id),None)
-    if not card:raise ValueError("This card is no longer in that section.")
+    metadata=None
+    if not card:
+        metadata=(await catalog()).get(card_id)
+        if manager.get_state(thread_id) is not state or state.active_deck_id!=deck_id or state.revision!=revision:
+            raise ValueError("The deck changed. Refresh before editing cards.")
+        if not metadata:raise ValueError("Search for a verified card before adding it.")
+        if metadata.get("type") in {"Leader","Base"}:raise ValueError("Leaders and bases cannot be added to the main deck or sideboard.")
+    elif card.get("count",0)>=99:raise ValueError("A card cannot have more than 99 copies in one section.")
     pre=deepcopy(state.deck_contents)
     if _linked(state):
-        await _commit_linked(manager,state,[_op("add",card["id"],1,"main" if section=="deck" else "side")],refresh=False)
+        await _commit_linked(manager,state,[_op("add",card_id,1,"main" if section=="deck" else "side")],refresh=False)
     else:
-        card['count']+=1
+        if card:card['count']+=1
+        else:rows.append({**metadata,"count":1})
     return _record(manager,state,pre)
 
 def slim_card(c):

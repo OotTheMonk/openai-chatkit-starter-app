@@ -1,0 +1,216 @@
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  color: #e1ebe5;
+  background: #101a18;
+  --forest: #d8eadf;
+  --green: #5caa87;
+  --muted: #a9bcb0;
+  --line: #354b42;
+  --cream: #101a18;
+}
+
+:root[data-theme="dark"] ::selection { background: #456a59; }
+:root[data-theme="dark"] * { scrollbar-color: #53685d transparent; }
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .workspace,
+:root[data-theme="dark"] .main-content,
+:root[data-theme="dark"] .assistant-view,
+:root[data-theme="dark"] .library { background: #101a18; color: #e1ebe5; }
+:root[data-theme="dark"] .sidebar { background: #0a1816; color: #e1ebe5; }
+:root[data-theme="dark"] .brand-mark { background: #b9d39d; color: #10261c; }
+:root[data-theme="dark"] .nav-item { color: #b6d0c0; }
+:root[data-theme="dark"] .nav-item:hover { background: #244437; color: #fff; }
+:root[data-theme="dark"] .nav-item.current { background: #365f49; color: #fff; }
+:root[data-theme="dark"] .theme-toggle { color: #d9e9d7; }
+:root[data-theme="dark"] .theme-toggle:hover { background: #30503e; }
+:root[data-theme="dark"] .workspace-header { background: #172520; border-color: var(--line); }
+:root[data-theme="dark"] .builder-shell .account-card,
+:root[data-theme="dark"] .builder-shell .account-status { color: #b6cabb; }
+:root[data-theme="dark"] .builder-shell .account-action,
+:root[data-theme="dark"] .text-button { color: #9ed4ad; }
+:root[data-theme="dark"] .chat-frame,
+:root[data-theme="dark"] .chat-transcript,
+:root[data-theme="dark"] .builder-shell .deck-inspector.is-open,
+:root[data-theme="dark"] .conversation-context,
+:root[data-theme="dark"] .composer-region { background: #172520; color: #e1ebe5; border-color: var(--line); }
+:root[data-theme="dark"] .splitter { background: #23362e; }
+:root[data-theme="dark"] .splitter:hover,
+:root[data-theme="dark"] .splitter:focus { background: #335242; }
+:root[data-theme="dark"] .splitter span { background: #718e7c; }
+:root[data-theme="dark"] .builder-shell .muted,
+:root[data-theme="dark"] .section-intro p,
+:root[data-theme="dark"] .tile-bottom,
+:root[data-theme="dark"] .deck-summary-line,
+:root[data-theme="dark"] .row-card-name small,
+:root[data-theme="dark"] .model-picker,
+:root[data-theme="dark"] .tool-status { color: #a8b9ac; }
+:root[data-theme="dark"] .builder-shell .eyebrow,
+:root[data-theme="dark"] .builder-shell .active-label,
+:root[data-theme="dark"] .deck-tabs button,
+:root[data-theme="dark"] .draft-badge { color: #a7c2a9; }
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .icon-button,
+:root[data-theme="dark"] .search-field,
+:root[data-theme="dark"] .filter-button,
+:root[data-theme="dark"] .library-toolbar select,
+:root[data-theme="dark"] .model-picker select,
+:root[data-theme="dark"] .native-composer,
+:root[data-theme="dark"] .goal-actions button { background: #22362d; border-color: #42604c; color: #e2eee5; }
+:root[data-theme="dark"] .secondary-button:hover,
+:root[data-theme="dark"] .icon-button:hover,
+:root[data-theme="dark"] .filter-button:hover,
+:root[data-theme="dark"] .goal-actions button:hover { background: #315142; }
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] .search-field input,
+:root[data-theme="dark"] .native-composer textarea { color: #e1ebe5; }
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color: #91a99a; }
+:root[data-theme="dark"] .native-composer textarea { background: transparent; }
+:root[data-theme="dark"] .from-user { background: #263a30; border-color: #456050; color: #e1ebe5; }
+:root[data-theme="dark"] .message-author,
+:root[data-theme="dark"] .thinking-status { color: #a6bea9; }
+:root[data-theme="dark"] .chat-message a { color: #9fdab3; }
+:root[data-theme="dark"] .deck-tile,
+:root[data-theme="dark"] .native-widget-listview,
+:root[data-theme="dark"] .native-widget-listviewitem,
+:root[data-theme="dark"] .native-widget-box,
+:root[data-theme="dark"] .tool-card,
+:root[data-theme="dark"] .tool-activity>summary,
+:root[data-theme="dark"] .proposal-review { background: #1c2d26; border-color: #3d5746; color: #e1ebe5; }
+:root[data-theme="dark"] .deck-tile.active,
+:root[data-theme="dark"] .builder-shell .compact-library .deck-tile.active,
+:root[data-theme="dark"] .native-widget-listviewitem:has(.widget-active) { background: #294638; }
+:root[data-theme="dark"] .deck-tile:hover,
+:root[data-theme="dark"] .draft-card-row:hover { background: #294237; }
+:root[data-theme="dark"] .deck-monogram,
+:root[data-theme="dark"] .deck-tile:nth-child(3n+2) .deck-monogram,
+:root[data-theme="dark"] .deck-tile:nth-child(3n) .deck-monogram,
+:root[data-theme="dark"] .empty-icon,
+:root[data-theme="dark"] .type-distribution>span,
+:root[data-theme="dark"] .stat-badge,
+:root[data-theme="dark"] .widget-active { background: #365443; color: #e4efdf; }
+:root[data-theme="dark"] .draft-card-row,
+:root[data-theme="dark"] .conversation-history>button,
+:root[data-theme="dark"] .native-widget-listviewitem { border-color: var(--line); color: #e1ebe5; }
+:root[data-theme="dark"] .row-card-image,
+:root[data-theme="dark"] .card-thumb,
+:root[data-theme="dark"] .image-fallback { background: #263b30; }
+:root[data-theme="dark"] .deck-tabs button[aria-selected=true],
+:root[data-theme="dark"] .deck-summary-line strong,
+:root[data-theme="dark"] .results-summary { color: #bce1bf; }
+:root[data-theme="dark"] .deck-validation-tooltip,
+:root[data-theme="dark"] .tool-hover,
+:root[data-theme="dark"] .card-dialog,
+:root[data-theme="dark"] .goal-dialog { background: #1b2e26; border-color: #49624f; color: #e1ebe5; }
+:root[data-theme="dark"] .goal-overlay { background: #07130dcc; }
+:root[data-theme="dark"] .goal-dialog textarea { background: #20372b; border-color: #56705a; }
+:root[data-theme="dark"] .draft-badge { border-color: #526d54; }
+:root[data-theme="dark"] .deck-stats,
+:root[data-theme="dark"] .deck-stats>div,
+:root[data-theme="dark"] .deck-tabs { border-color: var(--line); }
+:root[data-theme="dark"] .deck-stats strong,
+:root[data-theme="dark"] .deck-validation-tooltip strong { color: #cce8d0; }
+:root[data-theme="dark"] .builder-shell .identity-card img { background: #263b30; }
+:root[data-theme="dark"] .builder-shell .identity-card span,
+:root[data-theme="dark"] .curve span,
+:root[data-theme="dark"] .curve small,
+:root[data-theme="dark"] .deck-stats span { color: #aec4b2; }
+:root[data-theme="dark"] .deck-tabs span,
+:root[data-theme="dark"] .cost-filter-status,
+:root[data-theme="dark"] .proposal-analysis,
+:root[data-theme="dark"] .proposal-card { background: #263e31; color: #e1ebe5; }
+:root[data-theme="dark"] .card-removal button,
+:root[data-theme="dark"] .proposal-hover { background: #22382c; border-color: #4a6551; color: #e1ebe5; }
+:root[data-theme="dark"] .proposal-card-image,
+:root[data-theme="dark"] .proposal-card figcaption span,
+:root[data-theme="dark"] .proposal-card figcaption small,
+:root[data-theme="dark"] .proposal-analysis small { color: #b5cbb7; }
+:root[data-theme="dark"] .proposal-review>p,
+:root[data-theme="dark"] .proposal-review small { color: #b2c6b4; }
+:root[data-theme="dark"] .deck-skeleton { background: linear-gradient(110deg,#203228 25%,#314b3b 45%,#203228 65%); background-size: 200% 100%; }
+:root[data-theme="dark"] .model-picker label,
+:root[data-theme="dark"] .tool-title,
+:root[data-theme="dark"] .widget-text,
+:root[data-theme="dark"] .tool-hover .hover-query,
+:root[data-theme="dark"] .tool-hover .hover-chip { color: #e1ebe5; }
+:root[data-theme="dark"] .tool-hover .hover-chip { background: #2a4333; border-color: #49624f; }
+
+/* Stat widgets supply pale card backgrounds inline, so override those in dark mode. */
+:root[data-theme="dark"] .native-widget-listview:has(.stat-badge)>.native-widget-listviewitem:first-child .widget-text { color: #d8eadf; }
+:root[data-theme="dark"] .native-widget-listview:has(.stat-badge) .native-widget-box {
+  background: #263c31 !important;
+  border-color: #4b6654;
+  color: #e1ebe5;
+}
+:root[data-theme="dark"] .native-widget-listview:has(.stat-badge) .native-widget-col .widget-text:not(:first-child) { color: #b6cbbb; }
+
+/* Simulation controls, results, and the opponent deck modal. */
+:root[data-theme="dark"] .residual-simulation,
+:root[data-theme="dark"] .residual-deck-section,
+:root[data-theme="dark"] .residual-health-timeline { background: #1b3027; border-color: #45614d; color: #e1ebe5; }
+:root[data-theme="dark"] .residual-controls label,
+:root[data-theme="dark"] .residual-field-label,
+:root[data-theme="dark"] .residual-results summary,
+:root[data-theme="dark"] .residual-deck-section h4 { color: #c4e4c9; }
+:root[data-theme="dark"] .residual-controls input,
+:root[data-theme="dark"] .residual-controls select,
+:root[data-theme="dark"] .residual-opponent-menu>summary,
+:root[data-theme="dark"] .residual-opponent-options,
+:root[data-theme="dark"] .residual-opponent-options button,
+:root[data-theme="dark"] .residual-inspect-button,
+:root[data-theme="dark"] .residual-log-button,
+:root[data-theme="dark"] .residual-game-metrics>div,
+:root[data-theme="dark"] .residual-sample { background: #20382d; border-color: #4a6952; color: #e1ebe5; }
+:root[data-theme="dark"] .residual-opponent-options button:hover,
+:root[data-theme="dark"] .residual-opponent-options button.is-selected,
+:root[data-theme="dark"] .residual-inspect-button:hover { background: #315340; }
+:root[data-theme="dark"] .residual-results,
+:root[data-theme="dark"] .residual-deck-dialog .residual-action-header { border-color: #45614d; }
+:root[data-theme="dark"] .residual-deck-dialog,
+:root[data-theme="dark"] .residual-action-dialog,
+:root[data-theme="dark"] .residual-card-tooltip,
+:root[data-theme="dark"] .card-preview-tooltip,
+:root[data-theme="dark"] .residual-deck-dialog .residual-action-header { background: #192b23; color: #e1ebe5; }
+:root[data-theme="dark"] .residual-deck-dialog,
+:root[data-theme="dark"] .residual-action-dialog,
+:root[data-theme="dark"] .residual-card-tooltip,
+:root[data-theme="dark"] .card-preview-tooltip { border-color: #58705c; }
+:root[data-theme="dark"] .residual-deck-section h4 small,
+:root[data-theme="dark"] .residual-results small,
+:root[data-theme="dark"] .residual-deck-dialog .residual-action-header p,
+:root[data-theme="dark"] .residual-health-legend { color: #aebfb0; }
+:root[data-theme="dark"] .residual-game-metrics strong { color: #c8e5ca; }
+:root[data-theme="dark"] .residual-health-chart .grid { stroke: #45614d; }
+:root[data-theme="dark"] .residual-health-chart text { fill: #b4c5b7; }
+:root[data-theme="dark"] .residual-cost-heading { filter: brightness(1.35); }
+:root[data-theme="dark"] .residual-deck-count i { background: #fff; border-color: #101a18; box-shadow: 0 0 0 1px #101a18,0 1px 3px #000b; }
+
+/* Leader discovery. */
+:root[data-theme="dark"] .leader-discovery { color: #e1ebe5; }
+:root[data-theme="dark"] .leader-discovery>p,
+:root[data-theme="dark"] .discovery-context p,
+:root[data-theme="dark"] .discovery-explainer,
+:root[data-theme="dark"] .discovery-sources,
+:root[data-theme="dark"] .leader-option p,
+:root[data-theme="dark"] .leader-comparison p,
+:root[data-theme="dark"] .discovery-build p { color: #b3c6b8; }
+:root[data-theme="dark"] .discovery-filters label,
+:root[data-theme="dark"] .discovery-build>label,
+:root[data-theme="dark"] .leader-option .leader-fit { color: #d6e8d9; }
+:root[data-theme="dark"] .discovery-filters select,
+:root[data-theme="dark"] .discovery-build select,
+:root[data-theme="dark"] .discovery-build textarea { background: #24382d; border-color: #4a6651; color: #e1ebe5; }
+:root[data-theme="dark"] .discovery-context,
+:root[data-theme="dark"] .leader-comparison,
+:root[data-theme="dark"] .discovery-build,
+:root[data-theme="dark"] .leader-option { background: #1d3027; border-color: #48624e; color: #e1ebe5; }
+:root[data-theme="dark"] .leader-option>img { background: #293f32; }
+:root[data-theme="dark"] .discovery-context small,
+:root[data-theme="dark"] .leader-option summary,
+:root[data-theme="dark"] .leader-release,
+:root[data-theme="dark"] .discovery-sources a { color: #9ed4ad; }
+:root[data-theme="dark"] .leader-feedback button { border-color: #526e55; color: #cce8d0; }
+:root[data-theme="dark"] .leader-comparison th,
+:root[data-theme="dark"] .leader-comparison td { border-color: #425c49; }

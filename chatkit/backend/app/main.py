@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 
 from chatkit.server import StreamingResult
@@ -418,6 +419,27 @@ async def simulation_opponents() -> JSONResponse:
     from .catalog import catalog
     from .simulation import available_opponents
     return JSONResponse({"opponents": available_opponents(await catalog())})
+
+
+@app.get("/api/simulations/opponents/{opponent_id}")
+async def simulation_opponent_deck(opponent_id: str) -> JSONResponse:
+    from .catalog import catalog
+    from .simulation import opponent_deck
+    try:
+        return JSONResponse(opponent_deck(opponent_id, await catalog()))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.post("/api/simulations/replay/{replay_id}")
+async def simulation_replay(replay_id: str) -> JSONResponse:
+    from .simulation import import_replay
+    try:
+        return JSONResponse({"url": await import_replay(replay_id)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except (RuntimeError, httpx.HTTPError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
 
 
 @app.post("/api/draft/{thread_id}/{action}")

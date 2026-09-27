@@ -5,19 +5,25 @@
 .residual-controls .residual-mode-field{grid-column:1/-1}
 .residual-opponent-field{grid-column:1/-1;min-width:0}
 .residual-field-label{display:block;margin-bottom:4px;font-weight:600;color:#415944}
+.residual-opponent-control{display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}
 .residual-controls input,.residual-controls select{min-width:0;width:100%;padding:7px 8px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#243b30;font:inherit}
-.residual-opponent-menu{position:relative}
+.residual-opponent-menu{position:relative;min-width:0}
 .residual-opponent-menu>summary{display:flex;align-items:center;gap:8px;min-height:46px;padding:4px 8px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#243b30;cursor:pointer;list-style:none}
 .residual-opponent-menu>summary::-webkit-details-marker{display:none}
-.residual-opponent-menu>summary::after{content:"⌄";margin-left:auto;font-size:18px}
-.residual-opponent-menu>summary>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.residual-opponent-menu>summary:focus-visible,.residual-opponent-options button:focus-visible{outline:2px solid #326958;outline-offset:2px}
-.residual-opponent-options{position:absolute;z-index:20;top:calc(100% + 2px);left:0;right:0;max-height:320px;overflow:auto;border:1px solid #b9cab5;border-radius:5px;background:#fff;box-shadow:0 10px 24px #10291e30}
+.residual-opponent-menu>summary>svg{flex:none;margin-left:auto;color:#526457;transition:transform .15s ease}
+.residual-opponent-menu[open]>summary>svg{transform:rotate(180deg)}
+.residual-opponent-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.residual-opponent-menu>summary:focus-visible,.residual-opponent-options button:focus-visible,.residual-inspect-button:focus-visible{outline:2px solid #326958;outline-offset:2px}
+.residual-opponent-options{position:absolute;z-index:20;top:calc(100% + 2px);left:0;right:0;max-height:240px;overflow:auto;border:1px solid #b9cab5;border-radius:5px;background:#fff;box-shadow:0 10px 24px #10291e30}
 .residual-opponent-options button{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;background:#fff;color:#243b30;text-align:left;font:inherit;cursor:pointer}
+.residual-opponent-options button>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .residual-opponent-options button:hover,.residual-opponent-options button.is-selected{background:#e5f0e5}
 .residual-opponent-options button:disabled{cursor:default;opacity:.6}
 .residual-opponent-identity{display:flex;flex:none;gap:2px;min-width:0}
 .residual-opponent-identity img{display:block;width:50px;height:38px;object-fit:cover;border-radius:3px;background:#e4e9df}
+.residual-inspect-button{display:grid;place-items:center;width:46px;height:46px;border:1px solid #b9cab5;border-radius:5px;background:#fff;color:#285e4a;cursor:pointer}
+.residual-inspect-button:hover{background:#e5f0e5}
+.residual-inspect-button:disabled{opacity:.5;cursor:default}
 .residual-controls button{align-self:end}
 .residual-results{border-top:1px solid #d3dece;margin-top:14px;padding-top:8px}
 .residual-results p{margin:7px 0}
@@ -51,4 +57,33 @@
 .residual-action-header button{border:0;background:none;color:#415944;font-size:25px;line-height:1;cursor:pointer}
 .residual-action-dialog ol{max-height:60vh;overflow:auto;margin:14px 0 0;padding-left:25px;overflow-wrap:anywhere}
 .residual-action-dialog li{padding:3px 0}
+.residual-deck-dialog{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);margin:0;width:min(1200px,calc(100vw - 20px));max-height:min(94vh,1000px);padding:10px;border:1px solid #b9cab5;border-radius:9px;background:#fff;color:#243b30;box-shadow:0 20px 60px #10291e40}
+.residual-deck-dialog::backdrop{background:#10291e80}
+.residual-deck-dialog .residual-action-header{position:sticky;top:-10px;z-index:1;margin:-10px -10px 8px;padding:8px 10px;border-bottom:1px solid #e0e8dc;background:#fff;cursor:grab;touch-action:none;user-select:none}
+.residual-deck-dialog .residual-action-header:active{cursor:grabbing}
+.residual-deck-dialog .residual-action-header button{cursor:pointer}
+.residual-deck-title{display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;min-width:0;font-size:17px!important}
+.residual-deck-title-card{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.residual-deck-title-card img{display:block;flex:none;width:67px;height:49px;object-fit:contain;border-radius:3px}
+.residual-deck-main{min-width:0}
+.residual-deck-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;align-items:start}
+.residual-deck-section{min-width:0;padding:7px;border:1px solid #d3dece;border-radius:8px;background:#fafcf8}
+.residual-deck-section.is-wide{grid-column:1/-1}
+.residual-deck-section h4{display:flex;justify-content:space-between;gap:8px;margin:0 0 5px;font-size:14px;color:#285e4a}
+.residual-deck-section h4 small{font-size:11px;font-weight:500;white-space:nowrap;color:#607168}
+.residual-deck-section>p{margin:12px 0}
+.residual-deck-section{display:flex;flex-wrap:wrap;align-content:start;column-gap:4px;row-gap:3px}
+.residual-deck-section h4,.residual-deck-section>p{flex-basis:100%}
+.residual-cost-group{width:min(100%,calc(var(--card-count) * 90px));margin:0}
+.residual-cost-heading{display:flex;align-items:center;gap:4px;margin-bottom:1px;color:var(--cost-accent)}
+.residual-cost-heading span{flex:none;font-size:14px;font-weight:800;line-height:18px}
+.residual-cost-heading i{flex:1;border-top:3px solid currentColor;opacity:.7}
+.residual-cost-cards{display:grid;grid-template-columns:repeat(auto-fill,90px);gap:0;min-width:0}
+.residual-deck-row{position:relative;display:block;min-width:0;width:90px;aspect-ratio:1;padding:0;border:0;background:transparent;color:#243b30}
+.residual-deck-row:hover,.residual-deck-row:focus-visible{outline:2px solid var(--cost-accent);outline-offset:2px;border-radius:4px}
+.residual-deck-row img{display:block;width:100%;height:100%;object-fit:contain;border-radius:3px}
+.residual-deck-image-fallback{display:grid;place-items:center;width:100%;height:100%;padding:6px;font-size:11px;text-align:center}
+.residual-deck-count{position:absolute;z-index:2;left:50%;bottom:3px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:3px;pointer-events:none}
+.residual-deck-count i{display:block;width:9px;height:9px;border:1px solid #fff;border-radius:50%;background:#111;box-shadow:0 1px 3px #10291e99}
 @media(max-width:600px){.residual-game-metrics{grid-template-columns:1fr}.residual-game-metrics>div{flex-direction:row;align-items:center;gap:10px}}
+@media(max-width:600px){.residual-deck-sections{grid-template-columns:1fr}.residual-deck-section.is-wide{grid-column:auto}.residual-deck-title{font-size:14px!important}.residual-deck-title-card img{width:48px;height:36px}}

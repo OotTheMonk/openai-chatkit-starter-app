@@ -1,8 +1,9 @@
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { CHATKIT_API_URL } from "../lib/config";
-import { swuCardImage } from "../lib/deck";
+import { swuCardImage, type Draft } from "../lib/deck";
 import { Icon } from "./Icon";
+import { useCardPreview } from "./useCardPreview";
+import "./CardPreview.css";
 export interface ChatHandle { openThread:(id:string)=>Promise<void>; ask:(text:string)=>Promise<void>; newChat:()=>Promise<void>; history:()=>Promise<void>; selectDeck:(id:number,name:string,hasThread:boolean)=>Promise<void> }
 interface Action {type:string;payload?:Record<string,unknown>}
 interface Widget {type:string;value?:string;label?:string;children?:Widget[];onClickAction?:Action;id?:string;image?:string;name?:string;color?:string;src?:string;alt?:string;background?:string}
@@ -10,6 +11,7 @@ interface ToolTask {type?:string;title?:string|null;content?:string|null;status_
 
 interface Item {id:string;type:string;content?:{text?:string}[];widget?:Widget;workflow?:{tasks?:ToolTask[]}}
 interface ModelOption {id:string;label?:string;provider?:string;hint?:string;available?:boolean}
+interface CardControls {counts:Record<string,number>;canEdit:boolean;add:(id:string,name:string)=>void;remove:(id:string)=>void}
 const DEFAULT_MODELS:ModelOption[]=[{id:"gpt-4o",label:"GPT-4o",provider:"openai",available:true},{id:"gpt-4o-mini",label:"GPT-4o Mini",provider:"openai",available:true}];
 const storedModel=()=>{try{return localStorage.getItem("builder-model")||"gpt-4o";}catch{return "gpt-4o";}};
 interface Event {type:string;thread?:{id:string};item?:Item;item_id?:string;update?:{type:string;delta?:string;task?:ToolTask;task_index?:number};name?:string;data?:Record<string,unknown>;message?:string}
@@ -21,45 +23,47 @@ function Text({text}:{text:string}) {
    return link?<a key={i} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a>:part;
  })}</>;
 }
-function WidgetView({node,activeDeckId,act,disabled}:{node:Widget;activeDeckId:number|null;act:(a:Action)=>void;disabled:boolean}) {
+function WidgetView({node,activeDeckId,act,disabled,cardControls}:{node:Widget;activeDeckId:number|null;act:(a:Action)=>void;disabled:boolean;cardControls:CardControls}) {
  if(node.type==="Badge"){return <span className={"stat-badge"+(node.color?" is-"+node.color:"")}>{node.label||""}</span>;}
  if(node.type==="Image"&&typeof node.src==="string"&&node.src){return <StatImage src={node.src} full={node.id?swuCardImage(node.id,true):node.src} alt={typeof node.alt==="string"?node.alt:undefined}/>;}
- if(node.type==="Box")return <div className="native-widget-box" style={{background:/^#[0-9a-fA-F]{6}$/.test(node.background||"")?node.background:undefined}}>{node.children?.map((n,i)=><WidgetView key={i} node={n} activeDeckId={activeDeckId} act={act} disabled={disabled}/>)}</div>;
+ if(node.type==="Box")return <div className="native-widget-box" style={{background:/^#[0-9a-fA-F]{6}$/.test(node.background||"")?node.background:undefined}}>{node.children?.map((n,i)=><WidgetView key={i} node={n} activeDeckId={activeDeckId} act={act} disabled={disabled} cardControls={cardControls}/>)}</div>;
  if(node.type==="CardImage"){
   const name=typeof node.name==="string"&&node.name?node.name:(node.label||"Card");
   const art=typeof node.id==="string"&&node.id?swuCardImage(node.id):(typeof node.image==="string"&&node.image?node.image:null);
   if(!art)return <span className="hover-chip">{name}</span>;
   const full=typeof node.id==="string"&&node.id?swuCardImage(node.id,true):(typeof node.image==="string"&&node.image?node.image:undefined);
-  return <HoverThumb name={name} image={art} full={full}/>;
+  return <HoverThumb name={name} image={art} full={full} cardId={typeof node.id==="string"?node.id:undefined} cardControls={cardControls}/>;
  }
  if(node.type==="Button"){
   const active=node.onClickAction?.type==="select_deck"&&node.onClickAction.payload?.deck_id===activeDeckId;
   return <button className={active?"widget-active":"secondary-button"} disabled={disabled||active} onClick={()=>node.onClickAction&&act(node.onClickAction)}>{active?"Active":node.onClickAction?.type==="select_deck"?"Open deck":node.label}</button>;
  }
  if(node.value){if(node.value.startsWith("Active:"))return null;return <span className="widget-text"><Text text={node.value}/></span>;}
- return <div className={"native-widget-"+node.type.toLowerCase()}>{node.children?.map((n,i)=><WidgetView key={i} node={n} activeDeckId={activeDeckId} act={act} disabled={disabled}/>)}</div>;
+ return <div className={"native-widget-"+node.type.toLowerCase()}>{node.children?.map((n,i)=><WidgetView key={i} node={n} activeDeckId={activeDeckId} act={act} disabled={disabled} cardControls={cardControls}/>)}</div>;
 }
-function HoverThumb({name,image,full}:{name:string;image:string;full?:string}) {
- const [failed,setFailed]=useState(false),[fullOk,setFullOk]=useState(true);
- if(failed)return <span className="hover-chip">{name}</span>;
+function HoverThumb({name,image,full,cardId,cardControls}:{name:string;image:string;full?:string;cardId?:string;cardControls?:CardControls}) {
+ const [failed,setFailed]=useState(false);
+ const controls=cardId&&cardControls&&<span className="search-card-controls"><span className="search-card-count">{cardControls.counts[cardId]||0}×</span><span className="search-card-buttons"><button type="button" disabled={!cardControls.canEdit} aria-label={"Add one copy of "+name} title={cardControls.canEdit?"Add one copy to main deck":"Select a deck to edit"} onClick={()=>cardControls.add(cardId,name)}>+1</button><button type="button" disabled={!cardControls.canEdit||!cardControls.counts[cardId]} aria-label={"Remove one copy of "+name} title="Remove one copy from main deck" onClick={()=>cardControls.remove(cardId)}>−1</button></span></span>;
+ if(failed)return <span className="hover-thumb"><span className="hover-chip">{name}</span>{controls}</span>;
+ return <span className="hover-thumb"><CardPreviewImage name={name} image={image} full={full} buttonClassName="hover-thumb-button" onImageError={()=>setFailed(true)}/><span className="hover-name">{name}</span>{controls}</span>;
+}
+function CardPreviewImage({name,image,full,buttonClassName,imageClassName,onImageError}:{name:string;image:string;full?:string;buttonClassName:string;imageClassName?:string;onImageError:()=>void}) {
+ const [fullOk,setFullOk]=useState(true);
+ const preview=useCardPreview<string>();
  const big=full||image;
- return <span className="hover-thumb"><img src={image} alt={name} title={name} loading="lazy" onError={()=>setFailed(true)}/><span className="hover-name">{name}</span>{fullOk&&<span className="hover-full"><img src={big} alt={name} loading="lazy" onError={()=>setFullOk(false)}/></span>}</span>;
+ return <><button type="button" className={buttonClassName+" card-preview-target"} aria-label={"Preview "+name}
+  onPointerEnter={e=>{if(fullOk)preview.queue(big,e.currentTarget,e.clientX,e.clientY);}}
+  onPointerMove={e=>preview.move(e.currentTarget,e.clientX,e.clientY)} onPointerLeave={preview.hide}
+  onFocus={e=>{if(fullOk&&e.currentTarget.matches(":focus-visible")){const rect=e.currentTarget.getBoundingClientRect();preview.show(big,e.currentTarget,rect.right,rect.top);}}}
+  onBlur={preview.hide} onClick={e=>{if(fullOk){const rect=e.currentTarget.getBoundingClientRect();preview.show(big,e.currentTarget,e.detail?e.clientX:rect.right,e.detail?e.clientY:rect.top);}}}>
+  <img className={imageClassName} src={image} alt="" loading="lazy" onError={onImageError}/></button>
+  <div ref={preview.tooltip} popover="manual" className="card-preview-tooltip" role="tooltip">{preview.card&&<><img src={preview.card} alt="" onError={()=>{setFullOk(false);preview.hide();}}/><strong>{name}</strong></>}</div>
+ </>;
 }
 function StatImage({src,full,alt}:{src:string;full:string;alt?:string}) {
  const [failed,setFailed]=useState(false);
- const [preview,setPreview]=useState<{left:number;top:number}|null>(null);
  if(failed)return null;
- const show=(target:HTMLElement)=>{
-  const rect=target.getBoundingClientRect(),width=Math.min(220,window.innerWidth-24),height=Math.min(320,window.innerHeight-24);
-  const right=rect.right+8,left=right+width+12<=window.innerWidth?right:Math.max(12,rect.left-width-8);
-  setPreview({left,top:Math.max(12,Math.min(rect.top,window.innerHeight-height-12))});
- };
- return <>
-  <button type="button" className="stat-image-button" aria-label={"Preview full card: "+(alt||"Card art")} onMouseEnter={e=>show(e.currentTarget)} onMouseLeave={()=>setPreview(null)} onFocus={e=>show(e.currentTarget)} onBlur={()=>setPreview(null)} onKeyDown={e=>{if(e.key==="Escape")setPreview(null);}}>
-   <img className="stat-thumb" src={src} alt={alt||"Card art"} loading="lazy" onError={()=>setFailed(true)}/>
-  </button>
-  {preview&&createPortal(<div className="stat-full-card" role="tooltip" style={preview}><img src={full} alt=""/></div>,document.body)}
- </>;
+ return <CardPreviewImage name={alt||"Card art"} image={src} full={full} buttonClassName="stat-image-button" imageClassName="stat-thumb" onImageError={()=>setFailed(true)}/>;
 }
 const cardArt=(id:unknown)=>typeof id==="string"&&id?swuCardImage(id):null;
 const dedupeIds=(list:Item[])=>{const seen=new Map<string,number>();return list.map(it=>{const n=seen.get(it.id)??0;seen.set(it.id,n+1);return n?{...it,id:it.id+"#"+n}:it;});};
@@ -97,7 +101,7 @@ function ActivitySection({id,tasks,open,onToggle}:{id:string;tasks:ToolTask[];op
   return <div key={i} className={"tool-card is-"+st}><span className="tool-dot" aria-hidden="true"/><span className="tool-title">{t.title||"Request"}</span><span className="tool-status">{lb}</span>{t.content&&<HoverContent text={t.content}/>}</div>;
  })}</div></details>;
 }
-export const ChatKitPanel=forwardRef<ChatHandle,{onThreadChange:(id:string|null)=>void;onEffect:(event:{name:string;data?:Record<string,unknown>})=>void;context:ReactNode;activeDeckId:number|null}>(({onThreadChange,onEffect,context,activeDeckId},ref)=>{
+export const ChatKitPanel=forwardRef<ChatHandle,{onThreadChange:(id:string|null)=>void;onEffect:(event:{name:string;data?:Record<string,unknown>})=>void;context:ReactNode;activeDeckId:number|null;draft:Draft|null;cardBusy:boolean;onAddCard:(id:string,name:string)=>void;onRemoveCard:(id:string)=>void}>(({onThreadChange,onEffect,context,activeDeckId,draft,cardBusy,onAddCard,onRemoveCard},ref)=>{
  const current=useRef<string|null>(localStorage.getItem("builder-thread"));
  const [items,setItems]=useState<Item[]>([]),[input,setInput]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false),[streamText,setStreamText]=useState(""),[history,setHistory]=useState<{id:string;title:string}[]|null>(null),[folded,setFolded]=useState<Record<string,boolean>>({}),[models,setModels]=useState<ModelOption[]>(DEFAULT_MODELS),[modelId,setModelId]=useState<string>(storedModel);
  const locked=useRef(false),end=useRef<HTMLDivElement>(null),scroll=useRef<HTMLDivElement>(null),follow=useRef(true),mounted=useRef(true),requestController=useRef<AbortController|null>(null),epoch=useRef(0);
@@ -158,11 +162,12 @@ export const ChatKitPanel=forwardRef<ChatHandle,{onThreadChange:(id:string|null)
  useImperativeHandle(ref,()=>({openThread:async(id:string)=>{abortWork();setThread(id);setItems([]);setError("");setHistory(null);await load(id);pullModels();},ask,selectDeck,history:showHistory,newChat:()=>{abortWork();setThread(null);setItems([]);setError("");setHistory(null);setInput("");return Promise.resolve();}}));
  const action=(a:Action)=>{if(a.type==="view_library"){onEffect({name:"view_library"});return;}if(a.type==="select_deck"){void selectDeck(Number(a.payload?.deck_id)).catch(()=>{});return;}if(current.current)void send("threads.custom_action",{thread_id:current.current,action:a}).catch(()=>{});};
  const submit=()=>{const text=input.trim();if(!text||busy)return;setInput("");void ask(text).catch(()=>setInput(text));};
+ const cardControls:CardControls={counts:Object.fromEntries((draft?.deck_contents?.deck||[]).map(card=>[String(card.id),card.count])),canEdit:!!draft?.active_deck_id&&!!draft.deck_contents&&!cardBusy,add:onAddCard,remove:onRemoveCard};
  const renderItem=(item:Item,ix:number)=>{
   const parts=Array.isArray(item.content)?item.content:[];
   if(item.type!=="user_message"&&item.type!=="workflow"&&!item.widget&&!parts.some(c=>c&&c.text&&c.text.trim()))return null;
   if(item.type==="workflow"&&item.workflow&&(item.workflow.tasks||[]).length)return <ActivitySection key={item.id} id={item.id} tasks={item.workflow.tasks||[]} open={folded[item.id]??!items.slice(ix+1).some(later=>later.type==="assistant_message"||later.type==="widget"||later.type==="user_message")} onToggle={(id,expand)=>setFolded(f=>f[id]===expand?f:{...f,[id]:expand})}/>;
-  return ["user_message","assistant_message","widget"].includes(item.type)?<article key={item.id} className={"chat-message "+(item.type==="user_message"?"from-user":"from-assistant")} aria-label={item.type==="user_message"?"Your message":"Assistant response"}>{item.type!=="user_message"&&<span className="message-author">DECK ASSISTANT</span>}{parts.filter(c=>c&&c.text&&c.text.trim()).map((c,i)=><p key={i}><Text text={c.text||""}/></p>)}{item.widget&&<WidgetView node={item.widget} activeDeckId={activeDeckId} act={action} disabled={busy}/>}</article>:null;
+  return ["user_message","assistant_message","widget"].includes(item.type)?<article key={item.id} className={"chat-message "+(item.type==="user_message"?"from-user":"from-assistant")} aria-label={item.type==="user_message"?"Your message":"Assistant response"}>{item.type!=="user_message"&&<span className="message-author">DECK ASSISTANT</span>}{parts.filter(c=>c&&c.text&&c.text.trim()).map((c,i)=><p key={i}><Text text={c.text||""}/></p>)}{item.widget&&<WidgetView node={item.widget} activeDeckId={activeDeckId} act={action} disabled={busy} cardControls={cardControls}/>}</article>:null;
  };
  const renderGroups=()=>{
   const nodes:ReactNode[]=[];let i=0;

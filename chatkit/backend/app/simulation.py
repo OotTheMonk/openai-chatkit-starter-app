@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +14,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
+
+import httpx
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -21,6 +25,55 @@ RUNNER = ROOT / "simulation" / "turn_one_residual.php"
 CARD_ID = re.compile(r"^[A-Z0-9]{2,5}_(?:T[0-9]{2}|[0-9]{2,3})$")
 FIXTURE_NAME = re.compile(r"^[a-z0-9_]+$")
 FIXTURE_DIRS = ("meta-2026-09", "meta-2026-09-field")
+REPLAY_DIR = Path(tempfile.gettempdir()) / "chat-tcg-simulation-replays"
+REPLAY_MAX_AGE = 24 * 60 * 60
+PETRANAKI_BASE = "https://petranaki.net/TCGEngine"
+
+
+def _store_replay(replay: dict[str, Any]) -> str:
+    REPLAY_DIR.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    for path in REPLAY_DIR.glob("*.json"):
+        try:
+            if now - path.stat().st_mtime > REPLAY_MAX_AGE:
+                path.unlink()
+        except OSError:
+            pass
+    token = secrets.token_urlsafe(24)
+    (REPLAY_DIR / f"{token}.json").write_text(json.dumps(replay), encoding="utf-8")
+    return token
+
+
+async def import_replay(token: str) -> str:
+    """Create a temporary Petranaki playback game from one completed sample."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32}", token):
+        raise ValueError("Invalid replay link.")
+    path = REPLAY_DIR / f"{token}.json"
+    try:
+        if time.time() - path.stat().st_mtime > REPLAY_MAX_AGE:
+            raise ValueError("This replay has expired. Run the simulation again.")
+        replay = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError("This replay has expired. Run the simulation again.") from exc
+    if replay.get("format") != "tcgengine-match-replay-v1" or replay.get("rootName") != "SWUSim":
+        raise ValueError("The saved replay is invalid.")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(f"{PETRANAKI_BASE}/APIs/MatchReplay.php?action=import", json={"replay": replay})
+        response.raise_for_status()
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise RuntimeError("Petranaki did not return a replay response.") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("Petranaki returned an invalid replay response.")
+    if not result.get("success"):
+        raise RuntimeError(result.get("message") or "Petranaki could not import this replay.")
+    game_name, auth_key = str(result.get("gameName") or ""), str(result.get("authKey") or "")
+    if not game_name.isdecimal() or not re.fullmatch(r"[a-fA-F0-9]{32}", auth_key):
+        raise RuntimeError("Petranaki returned an invalid replay link.")
+    return f"{PETRANAKI_BASE}/NextTurn.php?" + urlencode({
+        "gameName": game_name, "playerID": "1", "folderPath": "SWUSim", "authKey": auth_key, "replay": "1",
+    })
 
 
 def _card_id(row: dict[str, Any] | None) -> str:
@@ -136,6 +189,45 @@ def available_opponents(cards: dict[str, dict[str, Any]] | None = None) -> list[
     return fixtures
 
 
+def opponent_deck(name: str, cards: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Show the exact local fixture used by the simulator, enriched with card names and art IDs."""
+    path = _fixture_path(name)
+    printing_cards: dict[str, dict[str, Any]] = {}
+    for card in (cards or {}).values():
+        for printing in card.get("printings", []):
+            if not isinstance(printing, dict):
+                continue
+            set_code = str(printing.get("set") or "").upper()
+            number = str(printing.get("number") or "")
+            if set_code and number:
+                suffix = str(int(number)).zfill(2 if set_code == "TS26" else 3) if number.isdecimal() else number
+                printing_cards[f"{set_code}_{suffix}"] = card
+    sections: dict[str, list[dict[str, Any]]] = {"Leader": [], "Base": [], "Deck": []}
+    section = ""
+    label = name
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            if label == name:
+                label = stripped.lstrip("# ") or name
+            continue
+        if stripped in sections:
+            section = stripped
+            continue
+        match = re.fullmatch(r"(\d+)\s+([A-Z0-9]{2,5}_(?:T\d{2}|\d{2,3}))", stripped)
+        if match and section:
+            count, printing_id = int(match.group(1)), match.group(2)
+            card = printing_cards.get(printing_id, {})
+            sections[section].append({"printingId": printing_id, "id": str(card.get("id") or ""),
+                                      "name": card.get("name") or printing_id, "cost": card.get("cost"),
+                                      "type": card.get("type") or "", "arenas": card.get("arenas") or [],
+                                      "count": count})
+    deck = sorted(sections["Deck"], key=lambda row: (row["cost"] is None, row["cost"] or 0, row["name"]))
+    return {"id": name, "label": label, "leader": sections["Leader"][0] if sections["Leader"] else None,
+            "base": sections["Base"][0] if sections["Base"] else None,
+            "deck": deck, "total": sum(row["count"] for row in deck)}
+
+
 def _git_revision(path: Path) -> str | None:
     result = subprocess.run(
         ["git", "-c", f"safe.directory={path.as_posix()}", "rev-parse", "HEAD"],
@@ -244,6 +336,9 @@ def run_local(contents: dict[str, Any], deck_id: int, revision: int, opponent: s
             except json.JSONDecodeError:
                 return {"status": "engine_error", "seed": sample_seed,
                         "engineError": f"SWUSim returned no JSON result: {run.stderr[-400:]}"}
+            replay = sample.pop("replay", None)
+            if sample.get("status") == "completed" and isinstance(replay, dict):
+                sample["replayId"] = _store_replay(replay)
             return sample
         # SWUSim allocates game IDs under a file lock. Each PHP process has its
         # own APCu state and mirrors the self-play harness's isolated workers.

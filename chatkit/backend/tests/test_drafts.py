@@ -99,9 +99,11 @@ class AddCardTests(unittest.IsolatedAsyncioTestCase):
         self.manager=DeckStateManager(self.path);self.manager.set_active_deck('thread',1,'Test deck')
         self.state=self.manager.get_state('thread');self.state.deck_contents=deepcopy(DECK)
         self.fake=FakeSWU(DECK)
+        self.catalog=patch('app.drafts.catalog',AsyncMock(return_value={**CARDS,'leader':{'id':'leader','name':'Leader','type':'Leader'}}));self.catalog.start()
+        self.enrich_catalog=patch('app.catalog.catalog',AsyncMock(return_value=CARDS));self.enrich_catalog.start()
         self.push=patch("app.swustats_write.push_deck_changes",side_effect=self.fake.push);self.push.start()
         self.fetch=patch("app.tools.load_deck.fetch_deck_contents",side_effect=self.fake.fetch);self.fetch.start()
-    def tearDown(self):self.push.stop();self.fetch.stop();self.temp.cleanup()
+    def tearDown(self):self.catalog.stop();self.enrich_catalog.stop();self.push.stop();self.fetch.stop();self.temp.cleanup()
     async def test_linked_add_pushes_single_copy(self):
         await add_card(self.manager,'thread',1,0,'a','deck')
         self.assertEqual(self.fake.pushed[-1][1],[{'action':'add','cardID':'a','count':1,'zone':'main'}])
@@ -121,6 +123,20 @@ class AddCardTests(unittest.IsolatedAsyncioTestCase):
         row=next(c for c in self.state.deck_contents['deck'] if c['id']=='a')
         self.assertEqual(row['count'],4)
         self.assertFalse(self.state.to_dict()['dirty'])
+    async def test_search_result_adds_new_card_to_linked_deck(self):
+        await add_card(self.manager,'thread',1,0,'b','deck')
+        self.assertEqual(self.fake.pushed[-1][1],[{'action':'add','cardID':'b','count':1,'zone':'main'}])
+        row=next(c for c in self.state.deck_contents['deck'] if c['id']=='b')
+        self.assertEqual((row['name'],row['count']),('Card B',1))
+    async def test_search_result_adds_new_card_to_local_sideboard(self):
+        self.state.source='local'
+        await add_card(self.manager,'thread',1,0,'b','sideboard')
+        self.assertEqual(self.state.deck_contents['sideboard'],[{**CARDS['b'],'count':1}])
+        self.assertEqual(self.fake.pushed,[])
+    async def test_rejects_unverified_and_identity_cards(self):
+        for card_id in ('unknown','leader'):
+            with self.assertRaises(ValueError):await add_card(self.manager,'thread',1,0,card_id,'deck')
+        self.assertEqual(self.fake.pushed,[])
 
 
 class ConversationPersistenceTests(unittest.IsolatedAsyncioTestCase):

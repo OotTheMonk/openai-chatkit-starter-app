@@ -1,9 +1,12 @@
 import unittest
+import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app.simulation import _aggregate, _aggregate_full_games, _card_id, _check_engine_card_data, available_opponents, deck_to_fixture, run_local
+import httpx
+
+from app.simulation import _aggregate, _aggregate_full_games, _card_id, _check_engine_card_data, _store_replay, available_opponents, deck_to_fixture, import_replay, opponent_deck, run_local
 
 
 def deck(base="JTL_019", count=50):
@@ -46,6 +49,25 @@ class SimulationTest(unittest.TestCase):
                 self.assertEqual(available_opponents(cards), [{"id": "sample", "label": "Sample opponent",
                     "group": "meta", "leaderId": "10", "baseId": "20"}])
 
+    def test_opponent_deck_lists_exact_fixture_with_card_names(self):
+        with TemporaryDirectory() as temporary:
+            fixtures = Path(temporary) / "SWUSim/Tests/BotFixtures/meta"
+            fixtures.mkdir(parents=True)
+            (fixtures / "sample.txt").write_text(
+                "# Sample opponent\nLeader\n1 ASH_009\nBase\n1 JTL_019\nDeck\n3 SEC_046\n2 LOF_093\n",
+                encoding="utf-8")
+            cards = {"10": {"id": "10", "name": "Ahsoka", "printings": [{"set": "ASH", "number": "009"}]},
+                     "20": {"id": "20", "name": "City", "printings": [{"set": "JTL", "number": "019"}]},
+                     "30": {"id": "30", "name": "Trooper", "cost": 2, "type": "Unit", "arenas": ["Ground"],
+                            "printings": [{"set": "SEC", "number": "046"}]}}
+            with patch("app.simulation.ENGINE_ROOT", Path(temporary)), patch("app.simulation.FIXTURE_DIRS", ("meta",)):
+                result = opponent_deck("sample", cards)
+            self.assertEqual(result["total"], 5)
+            self.assertEqual(result["leader"]["name"], "Ahsoka")
+            self.assertEqual(result["deck"][0]["name"], "Trooper")
+            self.assertEqual(result["deck"][0]["arenas"], ["Ground"])
+            self.assertEqual(result["deck"][1]["name"], "LOF_093")
+
     def test_failed_samples_are_not_scored_as_losses(self):
         samples = [
             {"status": "resolved_attack", "summary": {"unitCount": {"1": {"Ground": 0, "Space": 0}, "2": {"Ground": 1, "Space": 0}}, "remainingUnitHealth": {"1": {"Ground": 0, "Space": 0}, "2": {"Ground": 2, "Space": 0}}}, "afterAttack": {"baseHealth": {"1": 30, "2": 30}}},
@@ -87,6 +109,22 @@ class SimulationTest(unittest.TestCase):
             with patch("app.simulation.ENGINE_ROOT", root):
                 with self.assertRaisesRegex(RuntimeError, "ASH_021"):
                     _check_engine_card_data(fixture, "Base\n1 ASH_021\n")
+
+    def test_completed_replay_import_returns_petranaki_playback_link(self):
+        with TemporaryDirectory() as temporary, patch("app.simulation.REPLAY_DIR", Path(temporary)):
+            token = _store_replay({"format": "tcgengine-match-replay-v1", "rootName": "SWUSim",
+                                   "initialGamestate": "state", "actions": []})
+            transport = httpx.MockTransport(lambda request: httpx.Response(200, json={
+                "success": True, "gameName": "123456", "authKey": "a" * 32}))
+            client = httpx.AsyncClient(transport=transport)
+            with patch("app.simulation.httpx.AsyncClient", return_value=client):
+                url = asyncio.run(import_replay(token))
+            self.assertEqual(url, "https://petranaki.net/TCGEngine/NextTurn.php?"
+                             "gameName=123456&playerID=1&folderPath=SWUSim&authKey=" + "a" * 32 + "&replay=1")
+
+    def test_replay_link_rejects_unknown_token(self):
+        with self.assertRaisesRegex(ValueError, "Invalid replay link"):
+            asyncio.run(import_replay("../other"))
 
 
 if __name__ == "__main__":
